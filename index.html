@@ -491,7 +491,10 @@ function Prezentace({texts,args,metrics,objs,prices,csize,sv}){
 function baseOf(label){const m=String(label||"").match(/^(\d+)/);return m?m[1]:String(label||"");}
 function isMergeLabel(label){return String(label||"").includes("+");}
 function mergeBases(label){return [...new Set(String(label||"").match(/\d+/g)||[])];}
-// Buduje sekvenci dlaždic pro jeden sloupec/skupinu pozic, s podporou sloučení (span) i rozdělení (víc řádků na jednu bázi)
+// Skutečná výška pole v mm (z tabulky rozmery-poli-a-sablony-emailu.md) - určuje proporcionální výšku dlaždice v levém/pravém sloupci
+const POS_HEIGHT_MM={1:42,2:63,3:42,4:63,5:42,6:63,7:112,8:42,9:63,10:42,11:63,18:63,19:42,20:63,21:42,22:112,23:63,24:42,25:63,26:42,27:63,28:42,29:22};
+function heightOf(base){return POS_HEIGHT_MM[base]||50;}
+// Buduje sekvenci dlaždic pro jeden sloupec/skupinu pozic, s podporou sloučení i rozdělení + proporcionální výška dle mm
 function buildSlotGroups(baseSeq,rows){
   const used=new Set();const groups=[];
   for(let i=0;i<baseSeq.length;i++){
@@ -501,19 +504,20 @@ function buildSlotGroups(baseSeq,rows){
     if(mergeRow){
       const claimed=mergeBases(mergeRow.label);
       claimed.forEach(x=>used.add(x));
-      groups.push({type:"merge",row:mergeRow,span:claimed.length});
+      const weight=claimed.reduce((s,x)=>s+heightOf(x),0);
+      groups.push({type:"merge",row:mergeRow,weight});
       continue;
     }
     const matches=rows.filter(r=>!isMergeLabel(r.label)&&baseOf(r.label)===b);
     used.add(b);
-    groups.push({type:"single",base:b,rows:matches.length?matches:[null]});
+    groups.push({type:"single",base:b,rows:matches.length?matches:[null],weight:heightOf(b)});
   }
   return groups;
 }
 
 function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
   const [imgSt,setImgSt]=useState("");
-  function Tile({row,posLabel,horiz,tall}){
+  function Tile({row,posLabel,horiz,weight}){
     const r=row;
     const lbl=r?r.label:posLabel;
     const t=r&&TYPES[r.type];
@@ -521,6 +525,7 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
     const col=t?t.color:"#ccc";
     const bord=r&&r.type==="V"?"1px solid #d1d5db":"none";
     const words=r?(r.advertiser||"").trim().split(/\s+/).slice(0,2).join(" "):"";
+    const w=weight||50;
     if(horiz){return(
       <div onClick={()=>r&&onEdit(lbl)} style={{background:bg,border:bord,borderRadius:3,padding:"3px 6px",cursor:r?"pointer":"default",display:"flex",alignItems:"center",gap:4,minHeight:18}}>
         <span style={{fontSize:7,color:col,fontWeight:700,opacity:0.6,flexShrink:0}}>{lbl}</span>
@@ -529,9 +534,9 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
       </div>
     );}
     return(
-      <div onClick={()=>r&&onEdit(lbl)} style={{flex:tall?tall:1,background:bg,border:bord,borderRadius:3,padding:"3px 4px",cursor:r?"pointer":"default",position:"relative",overflow:"hidden",minHeight:tall?26*tall+2*(tall-1):26,display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
+      <div onClick={()=>r&&onEdit(lbl)} style={{flex:`${w} ${w} 0`,background:bg,border:bord,borderRadius:3,padding:"3px 4px",cursor:r?"pointer":"default",position:"relative",overflow:"hidden",minHeight:Math.round(w*0.6),display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
         <div style={{fontSize:7,color:col,fontWeight:700,opacity:0.55,lineHeight:1}}>{lbl}</div>
-        {words&&<div style={{fontSize:9,color:col,fontWeight:600,lineHeight:1.25,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:tall?tall*3:3,WebkitBoxOrient:"vertical",paddingRight:12}}>{words}</div>}
+        {words&&<div style={{fontSize:9,color:col,fontWeight:600,lineHeight:1.25,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:Math.max(1,Math.round(w/37)),WebkitBoxOrient:"vertical",paddingRight:12}}>{words}</div>}
         {r&&<div onClick={e=>{e.stopPropagation();onToggle(lbl);}} style={{position:"absolute",top:2,right:2,fontSize:10,lineHeight:1,cursor:"pointer"}}>{GFX_META[r.gfxStatus||"red"].icon}</div>}
       </div>
     );
@@ -539,8 +544,8 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
   function renderGroups(groups,keyPrefix){
     const out=[];
     groups.forEach((g,gi)=>{
-      if(g.type==="merge"){out.push(<Tile key={keyPrefix+gi} row={g.row} tall={g.span}/>);}
-      else{g.rows.forEach((r,ri)=>out.push(<Tile key={keyPrefix+gi+"_"+ri} row={r} posLabel={r?null:g.base}/>));}
+      if(g.type==="merge"){out.push(<Tile key={keyPrefix+gi} row={g.row} weight={g.weight}/>);}
+      else{const perRow=g.weight/g.rows.length;g.rows.forEach((r,ri)=>out.push(<Tile key={keyPrefix+gi+"_"+ri} row={r} posLabel={r?null:g.base} weight={perRow}/>));}
     });
     return out;
   }
@@ -562,7 +567,7 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
   return(
     <div style={{background:"white",borderRadius:12,padding:10,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
       <div style={{fontWeight:700,fontSize:12,color:DK,marginBottom:8}}>📋 Rozvržení plakátu <span style={{color:"#bbb",fontWeight:400,fontSize:10}}>· klepni 🔴/🟠/🟢 pro přepnutí grafiky</span></div>
-      <div className="poster-main-grid" style={{display:"grid",gridTemplateColumns:"1fr 2.5fr 1fr",gap:2,marginBottom:2,alignItems:"stretch"}}>
+      <div className="poster-main-grid" style={{display:"grid",gridTemplateColumns:"100fr 363fr 100fr",gap:2,marginBottom:2,alignItems:"stretch"}}>
         <div className="poster-side-col">
           {renderGroups(leftGroups,"L")}
         </div>
@@ -584,7 +589,7 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
           {renderGroups(rightGroups,"R")}
         </div>
       </div>
-      <div className="strip29-outer" style={{display:"grid",gridTemplateColumns:"1fr 2.5fr 1fr",gap:2,marginBottom:2}}>
+      <div className="strip29-outer" style={{display:"grid",gridTemplateColumns:"100fr 363fr 100fr",gap:2,marginBottom:2}}>
         <div className="strip29-spacer"></div>
         <div><Tile row={rows.find(r=>!isMergeLabel(r.label)&&baseOf(r.label)==="29")} posLabel="29" horiz={true}/></div>
         <div className="strip29-spacer"></div>
