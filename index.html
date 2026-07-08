@@ -583,12 +583,17 @@ function Vizitka({rows,camp,totalRev,cityName,sv,posterImg,onSavePosterImg}){
       const adv=(r.advertiser||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       const grph=(r.graphic||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       const gfxMark=GFX_META[r.gfxStatus||"red"].icon;
+      const genderMark=r.signedBy==="F"?"♀️":r.signedBy==="M"?"♂️":"—";
+      const navVal=(r.existingPrice&&r.price)?(parseFloat(r.price)-parseFloat(r.existingPrice)):null;
       return `<tr style="background:${bg};border-bottom:1px solid #ede9e2;">
-        <td style="padding:7px 6px;font-size:11px;color:#aaa;font-weight:600;white-space:nowrap;">${r.label||r.id} ${gfxMark}</td>
+        <td style="padding:7px 6px;font-size:11px;color:#aaa;font-weight:600;white-space:nowrap;">${r.label||r.id}</td>
         <td style="padding:7px 6px;text-align:center;">${tb}</td>
-        <td style="padding:7px 8px;font-size:12px;font-weight:600;color:#1C1C1E;white-space:nowrap;">${fmtN(r.price)}</td>
+        <td style="padding:7px 8px;font-size:12px;color:#7c3aed;font-weight:500;white-space:nowrap;">${fmtN(r.existingPrice)}</td>
         <td style="padding:7px 8px;font-size:12px;color:#6366f1;font-weight:500;white-space:nowrap;">${fmtN(r.price2)}</td>
-        <td style="padding:7px 8px;font-size:12px;color:#c2410c;font-weight:500;white-space:nowrap;">${fmtN((r.existingPrice&&r.price)?(parseFloat(r.price)-parseFloat(r.existingPrice)):null)}</td>
+        <td style="padding:7px 8px;font-size:12px;font-weight:600;color:#1C1C1E;white-space:nowrap;">${fmtN(r.price)}</td>
+        <td style="padding:7px 8px;font-size:12px;color:#c2410c;font-weight:500;white-space:nowrap;">${fmtN(navVal)}</td>
+        <td style="padding:7px 6px;text-align:center;font-size:12px;">${genderMark}</td>
+        <td style="padding:7px 6px;text-align:center;font-size:14px;">${gfxMark}</td>
         <td style="padding:7px 8px;font-size:12px;color:#1C1C1E;white-space:pre-wrap;line-height:1.55;">${adv}</td>
         <td style="padding:7px 8px;font-size:11px;color:#555;white-space:pre-wrap;line-height:1.55;">${grph}</td>
       </tr>`;
@@ -640,33 +645,43 @@ th{padding:9px 8px;font-weight:600;font-size:11px;letter-spacing:0.5px;text-alig
 </header>
 <div class="chips">
 <div class="chip"><div class="cl">Celková tržba</div><div class="cv" style="color:#E8772E;">${totalRev.toLocaleString("cs")} Kč</div></div>
-<div class="chip"><div class="cl">Cena pole</div><div class="cv" style="color:#6366f1;">${totalRev2.toLocaleString("cs")} Kč</div></div>
+${minRevNum!==null?`<div class="chip"><div class="cl">${belowMin?"Zbývá do minima":"Minimální tržba"}</div><div class="cv" style="color:${belowMin?"#dc2626":"#16a34a"};">${belowMin?remainingToMin.toLocaleString("cs")+" Kč":"✓ splněna"}</div></div>`:""}
 <div class="chip"><div class="cl">Navýšeno</div><div class="cv" style="color:#c2410c;">${totalNav.toLocaleString("cs")} Kč</div></div>
-<div class="chip"><div class="cl">Marže ${camp.marginPct}%</div><div class="cv" style="color:#2d6a4f;">${margin.toLocaleString("cs")} Kč</div></div>
+<div class="chip"><div class="cl">Marže ${camp.marginPct}%${recPct!==null&&recPct!==camp.marginPct?` (dop. ${recPct}%)`:""}</div><div class="cv" style="color:#2d6a4f;">${margin.toLocaleString("cs")} Kč</div></div>
 <div class="chip"><div class="cl">Inzerentů</div><div class="cv">${rows.filter(r=>r.advertiser).length} / ${rows.length}</div></div>
+</div>
+<div class="chips">
+<div class="chip"><div class="cl">Marže 75% (ihned)</div><div class="cv" style="color:#2d6a4f;">${margin75.toLocaleString("cs")} Kč</div></div>
+<div class="chip"><div class="cl">Marže 25% (po 4 měs.)</div><div class="cv" style="color:#2d6a4f;">${margin25.toLocaleString("cs")} Kč</div></div>
+<div class="chip"><div class="cl">♀️ Monika – tržba / marže</div><div class="cv" style="color:#be185d;font-size:14px;">${revF.toLocaleString("cs")} Kč / ${marginF.toLocaleString("cs")} Kč</div></div>
+<div class="chip"><div class="cl">♂️ Myrda – tržba / marže</div><div class="cv" style="color:#1d4ed8;font-size:14px;">${revM.toLocaleString("cs")} Kč / ${marginM.toLocaleString("cs")} Kč</div></div>
 </div>
 ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</div>`:""}
 <table>
 <thead><tr>
-<th style="width:34px">#</th><th style="width:48px">Typ</th>
-<th style="width:80px">Cena Kč</th><th style="width:76px;color:#a5b4fc">Cena pole</th>
-<th style="width:72px;color:#fca5a5">Navýšeno</th><th>Inzerent</th><th style="width:200px">Grafika / Poznámka</th>
+<th style="width:30px">#</th><th style="width:44px">Stav</th>
+<th style="width:70px;color:#c4b5fd">Stáv. cena</th><th style="width:70px;color:#a5b4fc">Cena pole</th><th style="width:76px">Cena Kč</th>
+<th style="width:70px;color:#fca5a5">Navýšeno</th><th style="width:36px">♀️/♂️</th><th style="width:36px">Gfx</th><th>Inzerent</th><th style="width:200px">Poznámka</th>
 </tr></thead>
 <tbody>${rowsHtml}</tbody>
 <tfoot><tr class="ftrow">
 <td colspan="2">CELKEM</td>
-<td style="color:#E8772E;font-size:14px;">${totalRev.toLocaleString("cs")}</td>
+<td></td>
 <td style="color:#6366f1;">${totalRev2.toLocaleString("cs")}</td>
+<td style="color:#E8772E;font-size:14px;">${totalRev.toLocaleString("cs")}</td>
 <td style="color:#c2410c;">${totalNav.toLocaleString("cs")}</td>
-<td colspan="2" style="color:#2d6a4f;">Marže ${camp.marginPct}%: ${margin.toLocaleString("cs")} Kč</td>
+<td colspan="4" style="color:#2d6a4f;">Marže ${camp.marginPct}%: ${margin.toLocaleString("cs")} Kč</td>
 </tr></tfoot>
 </table>
 <div class="stats">
-<div class="st"><div class="sl">Výchozí (V)</div><div class="sv" style="color:#1d4ed8;">${rows.filter(r=>r.type==="V").length}</div></div>
+<div class="st"><div class="sl">Výchozí (?)</div><div class="sv" style="color:#9a3412;">${rows.filter(r=>r.type==="?"||!r.type).length}</div></div>
+<div class="st"><div class="sl">Volné (V)</div><div class="sv" style="color:#6b7280;">${rows.filter(r=>r.type==="V").length}</div></div>
 <div class="st"><div class="sl">Noví (N)</div><div class="sv" style="color:#16a34a;">${rows.filter(r=>r.type==="N").length}</div></div>
 <div class="st"><div class="sl">Stávající (S)</div><div class="sv" style="color:#E8772E;">${rows.filter(r=>r.type==="S").length}</div></div>
-<div class="st"><div class="sl">Jiné (J)</div><div class="sv" style="color:#555;">${rows.filter(r=>r.type==="J").length}</div></div>
-<div class="st"><div class="sl">Dní kampaně</div><div class="sv">${days||"—"}</div></div>
+<div class="st"><div class="sl">Mění velikost (Z)</div><div class="sv" style="color:#78350f;">${rows.filter(r=>r.type==="Z").length}</div></div>
+<div class="st"><div class="sl">Jiné (J)</div><div class="sv" style="color:#1d4ed8;">${rows.filter(r=>r.type==="J").length}</div></div>
+<div class="st"><div class="sl">Dní celkem</div><div class="sv">${days||"—"}</div></div>
+<div class="st"><div class="sl">Pracovních dní</div><div class="sv" style="color:#E8772E;">${camp.startDate&&camp.endDate?workDays:"—"}</div></div>
 </div>
 <div class="docft"><span>Pro-Factor · Prodejní Tahák · tahax67.eu</span><span>${cityName||""} · ${fmtDate(camp.startDate)} – ${fmtDate(camp.endDate)}</span></div>
 </div></body></html>`;
