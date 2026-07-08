@@ -136,6 +136,31 @@ const IDB={
 function fmtDate(d){if(!d)return"—";const p=d.split("-");return p.length===3?p[2]+"-"+p[1]+"-"+p[0]:d;}
 function cpCopy(t){try{navigator.clipboard.writeText(t);}catch{try{const x=document.createElement("textarea");x.value=t;x.style="position:fixed;top:-9999px";document.body.appendChild(x);x.select();document.execCommand("copy");document.body.removeChild(x);}catch{}}}
 
+// České státní svátky (pevná data + Velikonoční pondělí spočtené algoritmem)
+function easterMonday(y){
+  const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),month=Math.floor((h+l-7*m+114)/31),day=((h+l-7*m+114)%31)+1;
+  const sunday=new Date(y,month-1,day);
+  return new Date(y,sunday.getMonth(),sunday.getDate()+1);
+}
+function isCzechHoliday(date){
+  const y=date.getFullYear(),md=(date.getMonth()+1)+"-"+date.getDate();
+  const fixed=["1-1","5-1","5-8","7-5","7-6","9-28","10-28","11-17","12-24","12-25","12-26"];
+  if(fixed.includes(md))return true;
+  const em=easterMonday(y);
+  return date.getFullYear()===em.getFullYear()&&date.getMonth()===em.getMonth()&&date.getDate()===em.getDate();
+}
+function countWorkDays(startStr,endStr){
+  if(!startStr||!endStr)return 0;
+  const start=new Date(startStr),end=new Date(endStr);
+  if(isNaN(start)||isNaN(end)||end<start)return 0;
+  let count=0;
+  for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
+    const dow=d.getDay();
+    if(dow!==0&&dow!==6&&!isCzechHoliday(d))count++;
+  }
+  return count;
+}
+
 const DEF_QB=[
   {id:1,icon:"🌐",label:"kulturavemeste.cz",desc:"Otevře web v novém okně",target:"web"},
   {id:2,icon:"💬",label:"Odpovědi na Námitky",desc:"Připravené odpovědi",target:"namitky"},
@@ -529,6 +554,7 @@ function Vizitka({rows,camp,totalRev,cityName,sv,posterImg,onSavePosterImg}){
   const totalRev2=rows.reduce((s,r)=>s+(parseFloat(r.price2)||0),0);
   const totalNav=rows.reduce((s,r)=>s+(parseFloat(r.navyseno)||0),0);
   let days=0;if(camp.startDate&&camp.endDate)days=Math.max(0,Math.round((new Date(camp.endDate)-new Date(camp.startDate))/86400000));
+  const workDays=countWorkDays(camp.startDate,camp.endDate);
   function addRow(){const mx=Math.max(...rows.map(r=>r.id||0),0);const lbl=String(mx+1);sv("rows",[...rows,{id:mx+1,rowId:"r"+Date.now(),label:lbl,type:"",price:"",price2:"",navyseno:"",gfxOk:false,advertiser:"",graphic:""}]);}
 
   function openPrintPage(){
@@ -637,7 +663,7 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
   function openEditByLabel(label){const r=getByLabel(label);if(r){setRd({...r});setERid(r.rowId);}}
   return(<div style={{padding:"16px 16px 0"}}>
     <h2 style={{margin:"0 0 14px",fontSize:17,fontWeight:900,color:DK}}>Vizitka – <span style={{color:OR}}>Prodaná místa</span></h2>
-    <div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:11}}><div style={{fontWeight:800,fontSize:13,color:DK}}>📅 {cityName||"Kampaň"}</div><button onClick={()=>{setCd({...camp});setECamp(true);}} style={{background:"transparent",border:`1.5px solid ${OR}`,color:OR,padding:"4px 9px",borderRadius:7,fontSize:12,fontWeight:600,cursor:"pointer"}}>✏️</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:11}}><div style={{background:"#f9f9f9",borderRadius:8,padding:9}}><div style={{fontSize:10,color:"#bbb"}}>Začátek</div><div style={{fontWeight:700,fontSize:12,color:DK,marginTop:2}}>{fmtDate(camp.startDate)}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:9}}><div style={{fontSize:10,color:"#bbb"}}>Konec</div><div style={{fontWeight:700,fontSize:12,color:DK,marginTop:2}}>{fmtDate(camp.endDate)}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:9}}><div style={{fontSize:10,color:"#bbb"}}>Dní celkem</div><div style={{fontWeight:700,fontSize:12,color:DK,marginTop:2}}>{days||"—"}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:9,gridColumn:"1/3"}}><div style={{fontSize:10,color:"#bbb",marginBottom:5}}>Inzeráty</div><div style={{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}}>{nP>0&&<span style={{background:"#fed7aa",color:"#9a3412",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nP} P</span>}{nV>0&&<span style={{background:"#f5f5f5",color:"#6b7280",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10,border:"1px solid #d1d5db"}}>{nV} V</span>}{nJ>0&&<span style={{background:"#374151",color:"white",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nJ} J</span>}{nN>0&&<span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nN} N</span>}{nS>0&&<span style={{background:"#fef3c7",color:"#92400e",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nS} S</span>}<span style={{color:"#ccc",margin:"0 2px"}}>·</span><span style={{background:"#fef9c3",color:"#a16207",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🟡 {nGfxNo}</span><span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🟢 {nGfxOk}</span></div></div></div>
+    <div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:11}}><div style={{fontWeight:800,fontSize:13,color:DK}}>📅 {cityName||"Kampaň"}</div><button onClick={()=>{setCd({...camp});setECamp(true);}} style={{background:"transparent",border:`1.5px solid ${OR}`,color:OR,padding:"4px 9px",borderRadius:7,fontSize:12,fontWeight:600,cursor:"pointer"}}>✏️</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,marginBottom:7}}><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Začátek</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{fmtDate(camp.startDate)}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Konec</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{fmtDate(camp.endDate)}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Dní celkem</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{days||"—"}</div></div><div style={{background:"#fff3e8",borderRadius:8,padding:"8px 5px",border:`1px solid ${OR}33`}}><div style={{fontSize:9.5,color:OR,fontWeight:600}}>Pracovních dní</div><div style={{fontWeight:800,fontSize:11.5,color:OR,marginTop:2}}>{camp.startDate&&camp.endDate?workDays:"—"}</div></div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:9,marginBottom:11}}><div style={{fontSize:10,color:"#bbb",marginBottom:5}}>Inzeráty</div><div style={{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}}>{nP>0&&<span style={{background:"#fed7aa",color:"#9a3412",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nP} P</span>}{nV>0&&<span style={{background:"#f5f5f5",color:"#6b7280",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10,border:"1px solid #d1d5db"}}>{nV} V</span>}{nJ>0&&<span style={{background:"#374151",color:"white",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nJ} J</span>}{nN>0&&<span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nN} N</span>}{nS>0&&<span style={{background:"#fef3c7",color:"#92400e",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nS} S</span>}<span style={{color:"#ccc",margin:"0 2px"}}>·</span><span style={{background:"#fef9c3",color:"#a16207",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🟡 {nGfxNo}</span><span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🟢 {nGfxOk}</span></div></div>
     <PosterGrid rows={rows} onToggle={toggleGfx} onEdit={openEditByLabel} posterImg={posterImg} onSavePosterImg={onSavePosterImg}/>
     <div style={{background:"#eef6ff",borderRadius:10,padding:12,marginBottom:9,border:"1.5px solid #bfdbfe"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:camp.summary?8:0}}><div style={{fontSize:11,fontWeight:700,color:"#1d4ed8"}}>📝 Shrnutí města</div><button onClick={()=>{setSumTmp(camp.summary||"");setEditSum(true);}} style={{background:"transparent",border:"1.5px solid #1d4ed8",color:"#1d4ed8",padding:"3px 9px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer"}}>✏️ Upravit</button></div>{camp.summary?<div style={{fontSize:13,color:"#1e3a8a",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{camp.summary}</div>:<div style={{fontSize:12,color:"#93c5fd",fontStyle:"italic"}}>Klepni na Upravit pro přidání poznámky...</div>}</div>
     <div style={{background:"#fff8f0",borderRadius:10,padding:12,marginBottom:9}}><div style={{fontSize:10,color:"#bbb"}}>Celková tržba</div><div style={{fontSize:24,fontWeight:900,color:OR}}>{totalRev.toLocaleString("cs")} Kč</div></div>
