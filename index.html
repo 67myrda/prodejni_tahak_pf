@@ -162,7 +162,7 @@ function countWorkDays(startStr,endStr){
 const DEF_QB=[
   {id:1,icon:"🌐",label:"kulturavemeste.cz",desc:"Otevře web v novém okně",target:"web"},
   {id:2,icon:"💬",label:"Odpovědi na Námitky",desc:"Připravené odpovědi",target:"namitky"},
-  {id:3,icon:"🏙️",label:"Předešlá města",desc:"Archiv měst (připravujeme)",target:"predesla_mesta"},
+  {id:3,icon:"🏙️",label:"Předešlá města",desc:"Archiv uzavřených měst",target:"predesla_mesta"},
   {id:4,icon:"✉️",label:"Email – Nový",desc:"Šablona pro nového zákazníka",target:"email_new"},
   {id:5,icon:"📞",label:"Telefon – Stávající",desc:"Skript stávající zákazník",target:"phone_existing"},
   {id:6,icon:"📞",label:"Telefon – Nový",desc:"Skript první kontakt",target:"phone_new"},
@@ -172,7 +172,7 @@ const DEF_QB=[
 ];
 // Bump toto číslo pokaždé, když se DEF_QB výše záměrně mění (nový layout dlaždic).
 // Appka pak automaticky přepíše uloženou (možná zastaralou/ručně upravenou) verzi v Firestore tou novou.
-const QB_VERSION=2;
+const QB_VERSION=3;
 const DEF_ARGS=[
   {id:1,icon:"🔄",title:"Opakované čtení",desc:"Lidi se k plakátu vracejí každý týden.",detail:"Plakát čtou lidé opakovaně každý týden. Vaše reklama dostane opakované zhlédnutí po celý měsíc."},
   {id:2,icon:"🏆",title:"Lokální hrdina",desc:"Firmy na plakátu jsou součástí regionu.",detail:"Zákazníci vnímají inzerenty jako podporovatele kultury. Firma tak buduje pozitivní vztah s komunitou."},
@@ -248,25 +248,7 @@ function BackDialog({onStay,onLeave}){
 function Modal({title,children,onClose,onSave,extraHeader}){
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div style={{background:"white",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:680,maxHeight:"92vh",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}><div style={{padding:"13px 17px",borderBottom:"1px solid #f0f0f0",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}><div style={{fontWeight:800,fontSize:14,color:DK,flex:1}}>{title}</div>{extraHeader&&<div style={{marginRight:6}}>{extraHeader}</div>}<button onClick={onClose} style={{background:"#f5f5f5",border:"none",width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:15,color:"#888",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button></div><div style={{flex:1,overflowY:"auto",padding:"13px 17px"}}>{children}</div>{onSave&&<div style={{padding:"11px 17px",borderTop:"1px solid #f0f0f0",display:"flex",gap:8,flexShrink:0}}><button onClick={onClose} style={{flex:1,padding:11,background:"#f5f5f5",border:"none",borderRadius:10,fontWeight:600,fontSize:13,cursor:"pointer",color:"#666"}}>Zrušit</button><button onClick={onSave} style={{flex:2,padding:11,background:OR,color:"white",border:"none",borderRadius:10,fontWeight:700,fontSize:13,cursor:"pointer"}}>💾 Uložit</button></div>}</div></div>);
 }
-function FileUploadBox({idbKey,maxFiles,maxMB,accept,label,emptyText}){
-  const [files,setFiles]=useState([]);const [status,setStatus]=useState("");const [preview,setPreview]=useState(null);const [rdy,setRdy]=useState(false);
-  useEffect(()=>{IDB.get(idbKey).then(d=>{setFiles(d||[]);setRdy(true);});},[idbKey]);
-  async function save(f){setFiles(f);await IDB.set(idbKey,f);}
-  function handleFile(e){
-    const f=e.target.files[0];if(!f)return;
-    if(files.length>=maxFiles){setStatus(`❌ Max. ${maxFiles} souborů.`);setTimeout(()=>setStatus(""),3000);return;}
-    if(f.size>maxMB*1024*1024){setStatus(`❌ Soubor je větší než ${maxMB} MB.`);setTimeout(()=>setStatus(""),3000);return;}
-    setStatus("⏳ Načítám...");
-    const r=new FileReader();
-    r.onload=async ev=>{try{const nf={id:Date.now(),name:f.name,type:f.type,size:f.size,data:ev.target.result,uploadedAt:new Date().toISOString()};await save([...files,nf]);setStatus("✅ Uloženo!");}catch(err){setStatus("❌ Chyba – soubor příliš velký?");}setTimeout(()=>setStatus(""),2000);e.target.value="";};
-    r.onerror=()=>{setStatus("❌ Chyba při čtení.");e.target.value="";};
-    r.readAsDataURL(f);
-  }
-  async function del(id){if(!window.confirm("Smazat soubor?"))return;await save(files.filter(f=>f.id!==id));}
-  function fmt(b){if(b<1048576)return(b/1024).toFixed(0)+"KB";return(b/1048576).toFixed(1)+"MB";}
-  if(!rdy)return<div style={{textAlign:"center",color:"#ccc",padding:20,fontSize:12}}>Načítám...</div>;
-  return(<div>{files.length<maxFiles&&(<div style={{marginBottom:12}}><label style={{display:"block",width:"100%",padding:"11px 0",background:status.startsWith("⏳")?"#ccc":OR,color:"white",borderRadius:10,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"center",boxSizing:"border-box",marginBottom:status?8:0}}>{label}<input type="file" accept={accept} style={{display:"none"}} onChange={handleFile} disabled={status.startsWith("⏳")}/></label>{status&&<div style={{padding:"8px 12px",borderRadius:8,background:status.startsWith("✅")?"#f0fdf4":status.startsWith("⏳")?"#fff8f0":"#fef2f2",color:status.startsWith("✅")?"#16a34a":status.startsWith("⏳")?OR:"#dc2626",fontSize:12,fontWeight:600}}>{status}</div>}</div>)}{files.length>=maxFiles&&<div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:9,padding:10,marginBottom:12,fontSize:12,color:"#166534",textAlign:"center"}}>✅ Plný ({maxFiles}/{maxFiles})</div>}{files.length===0&&<div style={{textAlign:"center",padding:"20px 0",color:"#ccc"}}><div style={{fontSize:32,marginBottom:6}}>📂</div><div style={{fontSize:12}}>{emptyText}</div></div>}{files.map(f=>(<div key={f.id} style={{background:"white",borderRadius:10,padding:11,marginBottom:8,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",display:"flex",alignItems:"center",gap:9}}><div style={{fontSize:22,flexShrink:0}}>{f.type?.includes("pdf")?"📄":f.type?.includes("image")?"🖼️":"📎"}</div><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,color:DK,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div><div style={{fontSize:10,color:"#ccc",marginTop:1}}>{fmt(f.size)} · {new Date(f.uploadedAt).toLocaleDateString("cs")}</div></div><div style={{display:"flex",gap:4,flexShrink:0}}><button onClick={()=>setPreview(f)} style={{background:"#eff6ff",border:"none",color:"#2563eb",padding:"5px 7px",borderRadius:6,fontSize:12,cursor:"pointer"}}>👁️</button><a href={f.data} download={f.name} style={{background:"#f0fdf4",color:"#16a34a",padding:"5px 7px",borderRadius:6,fontSize:12,textDecoration:"none"}}>⬇️</a><button onClick={()=>del(f.id)} style={{background:"#fef2f2",border:"none",color:"#dc2626",padding:"5px 7px",borderRadius:6,fontSize:12,cursor:"pointer"}}>✕</button></div></div>))}{preview&&(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.93)",zIndex:2000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:14}}><div style={{width:"100%",maxWidth:600}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{color:"white",fontSize:13,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{preview.name}</div><button onClick={()=>setPreview(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"white",padding:"6px 12px",borderRadius:7,cursor:"pointer",flexShrink:0,marginLeft:8}}>✕ Zavřít</button></div>{preview.type?.includes("pdf")?<iframe src={preview.data} style={{width:"100%",height:"78vh",borderRadius:8,border:"none"}} title={preview.name}/>:<img src={preview.data} alt={preview.name} style={{maxWidth:"100%",maxHeight:"80vh",objectFit:"contain",borderRadius:8,display:"block",margin:"0 auto"}}/>}</div></div>)}</div>);
-}
+
 // ── ROOT ──────────────────────────────────────────────────────
 function App(){
   const [phase,setPhase]=useState("loading");
@@ -390,18 +372,45 @@ function Shell({me,users,cfg,syncStatus,setSyncStatus,onLogout,upUsers,upCfg}){
     if(leafletImg!==undefined){setCityImgs(p=>({...p,leafletImg}));if(leafletImg)IDB.set("cityimg_"+uid+"_leaflet",leafletImg);else IDB.del("cityimg_"+uid+"_leaflet");}
   }
 
+  async function closeCity(){
+    if(!city||!rows||!camp)return{ok:false,msg:"Data ještě nejsou načtená."};
+    if(!window.confirm("Opravdu uzavřít město "+(city.name||"")+"? Tato akce je nevratná."))return{ok:false,msg:"Zrušeno."};
+    const wd=countWorkDays(camp.startDate,camp.endDate);
+    let dc=0;if(camp.startDate&&camp.endDate)dc=Math.max(0,Math.round((new Date(camp.endDate)-new Date(camp.startDate))/86400000));
+    const totalRevC=rows.reduce((s,r)=>s+(parseFloat(r.price)||0),0);
+    const marginC=Math.round(totalRevC*((camp.marginPct||0)/100));
+    const totalNavC=rows.reduce((s,r)=>s+((r.existingPrice&&r.price)?(parseFloat(r.price)-parseFloat(r.existingPrice)):0),0);
+    const nNc=rows.filter(r=>r.type==="N").length;
+    const nSZc=rows.filter(r=>r.type==="S"||r.type==="Z").length;
+    const nJc=rows.filter(r=>r.type==="J").length;
+    const revFc=rows.reduce((s,r)=>s+(r.signedBy==="F"?(parseFloat(r.price)||0):0),0);
+    const revMc=rows.reduce((s,r)=>s+(r.signedBy==="M"?(parseFloat(r.price)||0):0),0);
+    const cityId="c"+Date.now();
+    const record={id:cityId,mesto:city.name||"",edice:camp.endDate?new Date(camp.endDate).getFullYear():new Date().getFullYear(),datumOd:camp.startDate||"",datumDo:camp.endDate||"",dniCelkem:dc,pracovnichDni:wd,procentoMarze:camp.marginPct||0,celkemPoli:rows.length,nove:nNc,stavajiciZ:nSZc,jine:nJc,trzba:totalRevC,navyseni:totalNavC,marze:marginC,trzbaMonika:revFc,trzbaMyrda:revMc,closedAt:Date.now(),historic:false};
+    const ok1=await restSetDoc("pf_cities_history/"+cityId,record);
+    if(!ok1)return{ok:false,msg:"Uložení do archivu selhalo. Zkus to znovu."};
+    const newCity={name:"Vaše město",emoji:"🏙️"};
+    const newCamp={startDate:"",endDate:"",marginPct:20,notes:"",summary:"",revenueNoDiscount:"",minRevenue:"",revenueThisYear:""};
+    const newRows=mkRows();
+    await restPatch("pf_userdata/"+uid,{city:newCity,camp:newCamp,rows:newRows});
+    setCity(newCity);setCamp(newCamp);setRows(newRows);
+    IDB.del("cityimg_"+uid+"_poster");IDB.del("cityimg_"+uid+"_leaflet");
+    setCityImgs({posterImg:null,leafletImg:null});
+    return{ok:true,msg:"✅ Město "+record.mesto+" bylo uzavřeno a uloženo do archivu."};
+  }
+
   const cityFull=city?{...city,...cityImgs}:null;
   function nav(t){
     if(t==="web"){window.open("https://www.kulturavemeste.cz","_blank");return;}
     if(t==="disc_google"){window.open("https://drive.google.com/drive/folders/1IwM0Grensjt_dfbX8Vb5pKcMbbj8GE3s","_blank");return;}
-    if(t==="predesla_mesta"){window.alert("🏙️ Archiv Předešlá města se připravuje – čeká na dokončení redesignu záložky Shrnutí.");return;}
+    if(t==="predesla_mesta"){setTab("shrnuti");return;}
     if(t==="vizitka"){setTab("vizitka");return;}
     if(t==="vizitka_table"){setTab("vizitka");setTimeout(()=>document.getElementById("vizitka_table")?.scrollIntoView({behavior:"smooth",block:"start"}),200);return;}
     if(["prezentace","namitky","phone_new","phone_existing","email_new","email_consult","scenar","kalkulacka"].includes(t)){setTab("prezentace");setTimeout(()=>document.getElementById("s_"+t)?.scrollIntoView({behavior:"smooth",block:"start"}),200);return;}
     setTab(t);
   }
   const totalRev=rows?rows.reduce((s,r)=>s+(parseFloat(r.price)||0),0):0;
-  const tabs=[{id:"dashboard",icon:"🏠",label:"Přehled"},{id:"prezentace",icon:"📋",label:"Prezentace"},{id:"vizitka",icon:"📍",label:"Vizitka"},{id:"soubory",icon:"📁",label:"Soubory"},me.role==="admin"?{id:"admin",icon:"⚙️",label:"Admin"}:{id:"nastaveni",icon:"⚙️",label:"Nastavení"}];
+  const tabs=[{id:"dashboard",icon:"🏠",label:"Přehled"},{id:"prezentace",icon:"📋",label:"Prezentace"},{id:"vizitka",icon:"📍",label:"Vizitka"},{id:"shrnuti",icon:"🗂️",label:"Shrnutí"},me.role==="admin"?{id:"admin",icon:"⚙️",label:"Admin"}:{id:"nastaveni",icon:"⚙️",label:"Nastavení"}];
   if(!rdy||!city||!qb||!rows)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:BG}}><div style={{textAlign:"center"}}><div style={{color:OR,fontWeight:600,fontSize:15}}>⏳ Načítám data...</div><div style={{color:"#bbb",fontSize:12,marginTop:8}}>Připojuji se k databázi...</div></div></div>);
   return(<div style={{minHeight:"100vh",background:BG,maxWidth:680,margin:"0 auto"}}>
     <header style={{background:`linear-gradient(135deg,${DK},#2a1200)`,padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 10px rgba(0,0,0,0.3)"}}>
@@ -415,9 +424,9 @@ function Shell({me,users,cfg,syncStatus,setSyncStatus,onLogout,upUsers,upCfg}){
       {tab==="dashboard"&&cityFull&&qb&&intro!==null&&<Dashboard city={cityFull} qb={qb} intro={intro} onNav={nav} saveCity={saveCity} sv={sv}/>}
       {tab==="prezentace"&&texts&&args&&<Prezentace texts={texts} args={args} metrics={metrics} objs={objs} prices={prices} csize={csize} sv={sv}/>}
       {tab==="vizitka"&&rows&&camp&&<Vizitka rows={rows} camp={camp} totalRev={totalRev} cityName={city?.name} sv={sv} posterImg={cityImgs.posterImg} onSavePosterImg={(img)=>saveCity({...cityFull,posterImg:img})}/>}
-      {tab==="soubory"&&<Soubory uid={uid} rows={rows||[]}/>}
-      {tab==="nastaveni"&&<Nastaveni me={me} users={users} upUsers={upUsers}/>}
-      {tab==="admin"&&<Admin users={users} cfg={cfg} upUsers={upUsers} upCfg={upCfg}/>}
+      {tab==="shrnuti"&&<Shrnuti uid={uid}/>}
+      {tab==="nastaveni"&&<Nastaveni me={me} users={users} upUsers={upUsers} city={city} camp={camp} rows={rows} closeCity={closeCity}/>}
+      {tab==="admin"&&<Admin users={users} cfg={cfg} upUsers={upUsers} upCfg={upCfg} city={city} camp={camp} rows={rows} closeCity={closeCity}/>}
     </main>
     <nav style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:680,background:"white",borderTop:"1px solid #e5e7eb",display:"flex",zIndex:100,boxShadow:"0 -3px 15px rgba(0,0,0,0.08)"}}>
       {tabs.map(t=>(<button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"8px 4px 5px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><span style={{fontSize:18}}>{t.icon}</span><span style={{fontSize:9,color:tab===t.id?OR:"#999",fontWeight:tab===t.id?700:400}}>{t.label}</span>{tab===t.id&&<div style={{width:16,height:2,background:OR,borderRadius:1}}/>}</button>))}
@@ -789,41 +798,162 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
 }
 
 // ── SOUBORY ───────────────────────────────────────────────────
-function Soubory({uid,rows}){
-  const [openSlot,setOpenSlot]=useState(null);
-  const [labels,setLabels]=useState({});const [labelsRdy,setLabelsRdy]=useState(false);
-  const [slotCounts,setSlotCounts]=useState({});
-  const [editLabel,setEditLabel]=useState(null);const [labelTmp,setLabelTmp]=useState("");
-  useEffect(()=>{
-    restGet("pf_slotlabels/"+uid).then(d=>{setLabels(d||{});setLabelsRdy(true);});
-    const keys=Array.from({length:30},(_,i)=>"slot_"+uid+"_"+(i+1));
-    Promise.all(keys.map(k=>IDB.get(k))).then(results=>{const c={};results.forEach((r,i)=>{c[i+1]=(r||[]).length;});setSlotCounts(c);});
-  },[uid]);
-  function autoLabel(n){if(labels[n])return labels[n];const row=rows.find(r=>r.id===n);if(row?.advertiser){const s=row.advertiser.split("\n")[0].trim();return s.length>16?s.slice(0,15)+"…":s;}return null;}
-  async function saveLabels(l){setLabels(l);await restSetDoc("pf_slotlabels/"+uid,l);}
+const HIST_EMPTY={mesto:"",edice:new Date().getFullYear(),datumOd:"",datumDo:"",procentoMarze:20,celkemPoli:"",nove:"",stavajiciZ:"",jine:"",trzba:"",navyseni:"",marze:"",trzbaMonika:"",trzbaMyrda:""};
+function Shrnuti({uid}){
+  const [items,setItems]=useState(null);
+  const [showForm,setShowForm]=useState(false);
+  const [ed,setEd]=useState(null);
+  const [fd,setFd]=useState(HIST_EMPTY);
+  const [busy,setBusy]=useState(false);
+  async function load(){const list=await restGetCol("pf_cities_history");list.sort((a,b)=>(b.closedAt||0)-(a.closedAt||0));setItems(list);}
+  useEffect(()=>{load();},[uid]);
+  function openNew(){setFd(HIST_EMPTY);setEd("new");setShowForm(true);}
+  function openEdit(item){setFd({...item});setEd(item.id);setShowForm(true);}
+  async function saveForm(){
+    setBusy(true);
+    let dc=0;if(fd.datumOd&&fd.datumDo)dc=Math.max(0,Math.round((new Date(fd.datumDo)-new Date(fd.datumOd))/86400000));
+    const wd=countWorkDays(fd.datumOd,fd.datumDo);
+    const id=ed==="new"?"h"+Date.now():ed;
+    const record={...fd,id,dniCelkem:dc,pracovnichDni:wd,historic:fd.historic!==undefined?fd.historic:true,
+      celkemPoli:parseFloat(fd.celkemPoli)||0,nove:parseFloat(fd.nove)||0,stavajiciZ:parseFloat(fd.stavajiciZ)||0,jine:parseFloat(fd.jine)||0,
+      trzba:parseFloat(fd.trzba)||0,navyseni:parseFloat(fd.navyseni)||0,marze:parseFloat(fd.marze)||0,
+      trzbaMonika:parseFloat(fd.trzbaMonika)||0,trzbaMyrda:parseFloat(fd.trzbaMyrda)||0,
+      procentoMarze:parseFloat(fd.procentoMarze)||0,edice:parseInt(fd.edice)||new Date().getFullYear(),
+      closedAt:fd.closedAt||Date.now()};
+    await restSetDoc("pf_cities_history/"+id,record);
+    setBusy(false);setShowForm(false);load();
+  }
+  async function delItem(id){if(!window.confirm("Smazat tento záznam z archivu?"))return;await restDelDoc("pf_cities_history/"+id);load();}
+  const agg=items?items.reduce((s,it)=>{
+    s.trzba+=it.trzba||0;s.marze+=it.marze||0;s.navyseni+=it.navyseni||0;s.pracovnichDni+=it.pracovnichDni||0;
+    s.celkemPoli+=it.celkemPoli||0;s.nove+=it.nove||0;s.stavajiciZ+=it.stavajiciZ||0;s.jine+=it.jine||0;
+    const y=it.edice||"—";s.byYear[y]=(s.byYear[y]||0)+1;
+    return s;
+  },{trzba:0,marze:0,navyseni:0,pracovnichDni:0,celkemPoli:0,nove:0,stavajiciZ:0,jine:0,byYear:{}}):null;
+  const th={padding:"7px 8px",fontSize:9,fontWeight:700,color:"white",whiteSpace:"nowrap",textAlign:"left"};
+  const td={padding:"6px 8px",fontSize:10.5,color:DK,whiteSpace:"nowrap"};
+  const ff="1 1 0";
+  const nInp={...inp,padding:"8px 10px",fontSize:13};
   return(<div style={{padding:"16px"}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:13}}><h2 style={{margin:0,fontSize:17,fontWeight:900,color:DK}}>📁 Soubory <span style={{color:OR}}>klientů</span></h2>{openSlot&&<button onClick={()=>setOpenSlot(null)} style={{background:"#f5f5f5",border:"none",color:"#666",padding:"6px 12px",borderRadius:9,fontWeight:600,fontSize:12,cursor:"pointer"}}>← Zpět</button>}</div>
-    {!openSlot?(<>
-      <div style={{background:"#fffbf0",border:`1.5px solid ${OR}30`,borderRadius:10,padding:11,marginBottom:14,fontSize:11.5,color:"#888",lineHeight:1.5}}>💡 Soubory jsou uloženy lokálně v zařízení. Slot # = řádek klienta v Prodaných místech.</div>
-      {!labelsRdy?<div style={{textAlign:"center",color:"#ccc",padding:30}}>Načítám...</div>:(<div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:5,marginBottom:20}}>{Array.from({length:30},(_,i)=>{const n=i+1;const cnt=slotCounts[n]||0;const al=autoLabel(n);return(<div key={n} style={{position:"relative"}}><button onClick={()=>setOpenSlot(n)} style={{width:"100%",background:cnt>0?"#fff8f0":"white",border:cnt>0?`2px solid ${OR}40`:"1.5px solid #e5e7eb",borderRadius:9,padding:"7px 3px 5px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:1}}><span style={{fontSize:10,fontWeight:800,color:cnt>0?OR:DK}}>#{n}</span>{al&&<span style={{fontSize:7,color:"#777",lineHeight:1.2,textAlign:"center",wordBreak:"break-word",maxWidth:"100%",padding:"0 2px"}}>{al}</span>}{cnt>0?<span style={{background:cnt>=4?GR:OR,color:"white",fontSize:8,fontWeight:700,padding:"1px 4px",borderRadius:3,marginTop:1}}>{cnt}/4</span>:<span style={{fontSize:12,opacity:0.2}}>📄</span>}</button><button onClick={e=>{e.stopPropagation();setEditLabel(n);setLabelTmp(labels[n]||"");}} style={{position:"absolute",top:2,right:2,background:"none",border:"none",fontSize:8,cursor:"pointer",color:"#bbb",padding:0,lineHeight:1}}>✏️</button></div>);})}</div>)}
-      <div style={{background:"#f0f9ff",border:"2px solid #bae6fd",borderRadius:14,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><span style={{fontSize:20}}>🗂️</span><div><div style={{fontWeight:800,fontSize:14,color:"#0369a1"}}>Obecné úložiště</div><div style={{fontSize:11,color:"#7dd3fc"}}>Soubory bez vazby na klienta · max 10 souborů · 10 MB / soubor</div></div></div><FileUploadBox idbKey={"general_"+uid} maxFiles={10} maxMB={10} accept="image/*,application/pdf" label="📤 Přidat soubor (PDF nebo obrázek)" emptyText="Obecné úložiště je prázdné"/></div>
-      {editLabel!==null&&<Modal title={"Označit slot #"+editLabel} onClose={()=>setEditLabel(null)} onSave={async()=>{const l={...labels};if(labelTmp.trim())l[editLabel]=labelTmp.trim();else delete l[editLabel];await saveLabels(l);setEditLabel(null);}}><div style={{marginBottom:8,fontSize:12,color:"#888"}}>Vlastní popis (prázdné = auto z Vizitky)</div><input style={inp} value={labelTmp} onChange={e=>setLabelTmp(e.target.value)} placeholder="Název firmy..."/></Modal>}
-    </>):(<div><div style={{background:`linear-gradient(135deg,${DK},#2a1500)`,borderRadius:12,padding:14,marginBottom:14}}><div style={{color:"rgba(255,255,255,0.5)",fontSize:10,fontWeight:700,marginBottom:2}}>KLIENT · SLOT</div><div style={{color:"white",fontWeight:900,fontSize:20}}>#{openSlot}</div>{autoLabel(openSlot)&&<div style={{color:OR,fontSize:12,fontWeight:600,marginTop:2}}>{autoLabel(openSlot)}</div>}<div style={{color:"rgba(255,255,255,0.5)",fontSize:11,marginTop:2}}>Max 4 soubory · 10 MB / soubor · uloženo lokálně</div></div><FileUploadBox idbKey={"slot_"+uid+"_"+openSlot} maxFiles={4} maxMB={10} accept="image/*,application/pdf" label="📤 Přidat soubor (PDF nebo obrázek, max 10 MB)" emptyText={"Zatím žádné soubory pro klienta #"+openSlot}/></div>)}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:13}}><h2 style={{margin:0,fontSize:17,fontWeight:900,color:DK}}>🗂️ <span style={{color:OR}}>Shrnutí</span></h2><button onClick={openNew} style={{background:"transparent",border:`1.5px solid ${OR}`,color:OR,padding:"5px 10px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer"}}>+ Historické město</button></div>
+
+    <h3 style={{margin:"0 0 8px",fontSize:13,color:DK}}>📚 Archiv měst</h3>
+    {!items?<div style={{textAlign:"center",color:"#ccc",padding:30}}>Načítám...</div>:items.length===0?
+      <div style={{background:"white",borderRadius:12,padding:20,textAlign:"center",color:"#ccc",fontSize:13,marginBottom:20}}>Zatím žádná uzavřená ani historická města.</div>:
+      <div style={{background:"white",borderRadius:12,overflow:"auto",boxShadow:"0 2px 8px rgba(0,0,0,0.06)",marginBottom:20,WebkitOverflowScrolling:"touch"}}>
+        <table style={{borderCollapse:"collapse",width:"100%"}}>
+          <thead><tr style={{background:DK}}>
+            <th style={th}>Město</th><th style={th}>Ed.</th><th style={th}>Od–Do</th><th style={th}>Dní</th><th style={th}>Prac.</th><th style={th}>%m</th><th style={th}>Polí</th><th style={th}>N</th><th style={th}>S+Z</th><th style={th}>J</th><th style={{...th,color:"#fdba74"}}>Tržba</th><th style={{...th,color:"#fca5a5"}}>Navýš.</th><th style={{...th,color:"#86efac"}}>Marže</th><th style={th}>ø/den</th><th style={{...th,color:"#f9a8d4"}}>♀️</th><th style={{...th,color:"#93c5fd"}}>♂️</th><th style={th}></th>
+          </tr></thead>
+          <tbody>{items.map((it,i)=>{
+            const perDay=it.pracovnichDni?Math.round((it.marze||0)/it.pracovnichDni):0;
+            return(<tr key={it.id} onClick={()=>openEdit(it)} style={{background:i%2?"#faf8f5":"white",borderBottom:"1px solid #f0eee9",cursor:"pointer"}}>
+              <td style={{...td,fontWeight:700}}>{it.historic?"🕰️ ":"🏁 "}{it.mesto||"—"}</td>
+              <td style={td}>{it.edice||"—"}</td>
+              <td style={td}>{fmtDate(it.datumOd)}–{fmtDate(it.datumDo)}</td>
+              <td style={td}>{it.dniCelkem||"—"}</td>
+              <td style={{...td,color:OR,fontWeight:700}}>{it.pracovnichDni||"—"}</td>
+              <td style={td}>{it.procentoMarze||0}%</td>
+              <td style={td}>{it.celkemPoli||0}</td>
+              <td style={{...td,color:"#16a34a"}}>{it.nove||0}</td>
+              <td style={{...td,color:"#92400e"}}>{it.stavajiciZ||0}</td>
+              <td style={{...td,color:"#1d4ed8"}}>{it.jine||0}</td>
+              <td style={{...td,color:OR,fontWeight:700}}>{(it.trzba||0).toLocaleString("cs")}</td>
+              <td style={{...td,color:"#c2410c"}}>{(it.navyseni||0).toLocaleString("cs")}</td>
+              <td style={{...td,color:GR,fontWeight:700}}>{(it.marze||0).toLocaleString("cs")}</td>
+              <td style={td}>{perDay.toLocaleString("cs")}</td>
+              <td style={{...td,color:"#be185d"}}>{(it.trzbaMonika||0).toLocaleString("cs")}</td>
+              <td style={{...td,color:"#1d4ed8"}}>{(it.trzbaMyrda||0).toLocaleString("cs")}</td>
+              <td style={td}><button onClick={e=>{e.stopPropagation();delItem(it.id);}} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:12,padding:0}}>🗑️</button></td>
+            </tr>);
+          })}</tbody>
+        </table>
+      </div>
+    }
+
+    <h3 style={{margin:"0 0 8px",fontSize:13,color:DK}}>📊 Souhrnné statistiky</h3>
+    {!agg?<div style={{textAlign:"center",color:"#ccc",padding:20}}>Načítám...</div>:(<>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:9}}>
+      <div style={{background:"#fff8f0",borderRadius:13,padding:13}}><div style={{fontSize:10,fontWeight:600,color:"#777"}}>Celková tržba</div><div style={{fontSize:20,fontWeight:900,color:OR,marginTop:3}}>{agg.trzba.toLocaleString("cs")} Kč</div></div>
+      <div style={{background:"#f0fdf4",borderRadius:13,padding:13}}><div style={{fontSize:10,fontWeight:600,color:"#777"}}>Celková marže</div><div style={{fontSize:20,fontWeight:900,color:GR,marginTop:3}}>{agg.marze.toLocaleString("cs")} Kč</div></div>
+      <div style={{background:"#eff6ff",borderRadius:13,padding:13}}><div style={{fontSize:10,fontWeight:600,color:"#777"}}>Ø marže / den</div><div style={{fontSize:20,fontWeight:900,color:"#2563eb",marginTop:3}}>{agg.pracovnichDni?Math.round(agg.marze/agg.pracovnichDni).toLocaleString("cs"):"—"} Kč</div></div>
+      <div style={{background:"#fff7ed",borderRadius:13,padding:13}}><div style={{fontSize:10,fontWeight:600,color:"#777"}}>Celkové navýšení</div><div style={{fontSize:20,fontWeight:900,color:"#c2410c",marginTop:3}}>{agg.navyseni.toLocaleString("cs")} Kč</div></div>
+    </div>
+    <div style={{background:"white",borderRadius:13,padding:13,marginBottom:9,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+      <div style={{fontSize:11,fontWeight:700,color:DK,marginBottom:8}}>Celkem polí / N / S+Z / J</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <span style={{background:"#f5f5f5",padding:"3px 9px",borderRadius:6,fontSize:12,fontWeight:700,color:DK}}>{agg.celkemPoli} polí</span>
+        <span style={{background:"#dcfce7",padding:"3px 9px",borderRadius:6,fontSize:12,fontWeight:700,color:"#16a34a"}}>{agg.nove} N</span>
+        <span style={{background:"#fef3c7",padding:"3px 9px",borderRadius:6,fontSize:12,fontWeight:700,color:"#92400e"}}>{agg.stavajiciZ} S+Z</span>
+        <span style={{background:"#dbeafe",padding:"3px 9px",borderRadius:6,fontSize:12,fontWeight:700,color:"#1d4ed8"}}>{agg.jine} J</span>
+      </div>
+    </div>
+    <div style={{background:"white",borderRadius:13,padding:13,marginBottom:14,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+      <div style={{fontSize:11,fontWeight:700,color:DK,marginBottom:8}}>Počet uzavřených měst / rok</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{Object.keys(agg.byYear).sort().reverse().map(y=>(<span key={y} style={{background:"#fff8f0",padding:"3px 9px",borderRadius:6,fontSize:12,fontWeight:700,color:OR}}>{y}: {agg.byYear[y]}</span>))}</div>
+    </div>
+    </>)}
+
+    {showForm&&<Modal title={ed==="new"?"+ Historické město":"Upravit záznam"} onClose={()=>setShowForm(false)} onSave={saveForm} extraHeader={ed!=="new"?<button onClick={()=>{delItem(ed);setShowForm(false);}} style={{background:"#fef2f2",border:"1.5px solid #fca5a5",color:"#dc2626",padding:"3px 9px",borderRadius:7,fontSize:12,cursor:"pointer",fontWeight:700}}>🗑️</button>:null}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:11}}>
+        <div style={{gridColumn:"1/3"}}><label style={lbl}>Město</label><input style={inp} value={fd.mesto} onChange={e=>setFd(p=>({...p,mesto:e.target.value}))} placeholder="Název města"/></div>
+        <div><label style={lbl}>Edice (rok)</label><input type="number" style={nInp} value={fd.edice} onChange={e=>setFd(p=>({...p,edice:e.target.value}))}/></div>
+        <div><label style={lbl}>% marže</label><input type="number" style={nInp} value={fd.procentoMarze} onChange={e=>setFd(p=>({...p,procentoMarze:e.target.value}))}/></div>
+        <div><label style={lbl}>Datum od</label><input type="date" style={nInp} value={fd.datumOd} onChange={e=>setFd(p=>({...p,datumOd:e.target.value}))}/></div>
+        <div><label style={lbl}>Datum do</label><input type="date" style={nInp} value={fd.datumDo} onChange={e=>setFd(p=>({...p,datumDo:e.target.value}))}/></div>
+      </div>
+      {fd.datumOd&&fd.datumDo&&<div style={{fontSize:11,color:"#888",marginBottom:11}}>Dní celkem: <strong>{Math.max(0,Math.round((new Date(fd.datumDo)-new Date(fd.datumOd))/86400000))}</strong> · Pracovních dní: <strong style={{color:OR}}>{countWorkDays(fd.datumOd,fd.datumDo)}</strong></div>}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:11}}>
+        <div><label style={lbl}>Polí</label><input type="number" style={nInp} value={fd.celkemPoli} onChange={e=>setFd(p=>({...p,celkemPoli:e.target.value}))} placeholder="0"/></div>
+        <div><label style={{...lbl,color:"#16a34a"}}>N</label><input type="number" style={nInp} value={fd.nove} onChange={e=>setFd(p=>({...p,nove:e.target.value}))} placeholder="0"/></div>
+        <div><label style={{...lbl,color:"#92400e"}}>S+Z</label><input type="number" style={nInp} value={fd.stavajiciZ} onChange={e=>setFd(p=>({...p,stavajiciZ:e.target.value}))} placeholder="0"/></div>
+        <div><label style={{...lbl,color:"#1d4ed8"}}>J</label><input type="number" style={nInp} value={fd.jine} onChange={e=>setFd(p=>({...p,jine:e.target.value}))} placeholder="0"/></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:11}}>
+        <div><label style={lbl}>Tržba</label><input type="number" style={nInp} value={fd.trzba} onChange={e=>setFd(p=>({...p,trzba:e.target.value}))} placeholder="0"/></div>
+        <div><label style={{...lbl,color:"#c2410c"}}>Navýšení</label><input type="number" style={nInp} value={fd.navyseni} onChange={e=>setFd(p=>({...p,navyseni:e.target.value}))} placeholder="0"/></div>
+        <div><label style={{...lbl,color:GR}}>Marže</label><input type="number" style={nInp} value={fd.marze} onChange={e=>setFd(p=>({...p,marze:e.target.value}))} placeholder="0"/></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:4}}>
+        <div><label style={{...lbl,color:"#be185d"}}>♀️ Tržba Monika</label><input type="number" style={nInp} value={fd.trzbaMonika} onChange={e=>setFd(p=>({...p,trzbaMonika:e.target.value}))} placeholder="0"/></div>
+        <div><label style={{...lbl,color:"#1d4ed8"}}>♂️ Tržba Myrda</label><input type="number" style={nInp} value={fd.trzbaMyrda} onChange={e=>setFd(p=>({...p,trzbaMyrda:e.target.value}))} placeholder="0"/></div>
+      </div>
+    </Modal>}
+  </div>);
+}
+
+// ── UZAVŘÍT MĚSTO (sdíleno Nastavení + Admin) ──────────────────
+function CloseCitySection({city,camp,rows,closeCity}){
+  const [msg,setMsg]=useState("");const [busy,setBusy]=useState(false);
+  if(!city||!rows||!camp)return null;
+  const totalRev=rows.reduce((s,r)=>s+(parseFloat(r.price)||0),0);
+  const nOpen=rows.filter(r=>r.type==="V").length;
+  async function handle(){setBusy(true);setMsg("");const res=await closeCity();setBusy(false);setMsg(res.msg);}
+  return(<div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+    <h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>🏁 Uzavřít město</h3>
+    <div style={{background:"#f9f9f9",borderRadius:10,padding:11,marginBottom:11,fontSize:12,color:"#666",lineHeight:1.6}}>
+      <div style={{fontWeight:700,color:DK,marginBottom:2}}>{city.emoji} {city.name}</div>
+      <div>Tržba: {totalRev.toLocaleString("cs")} Kč · Polí celkem: {rows.length}</div>
+    </div>
+    {nOpen>0?(<div style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:10,padding:11,fontSize:12.5,color:"#dc2626",lineHeight:1.6}}>⚠️ {nOpen}× pole ve stavu <strong>Volné (V)</strong> — uzavření je zablokované, dokud se i poslední volné pole neprodá.</div>):(<>
+    {msg&&<div style={{padding:9,borderRadius:8,background:msg.startsWith("✅")?"#f0fdf4":"#fef2f2",color:msg.startsWith("✅")?GR:"#dc2626",fontSize:13,marginBottom:11}}>{msg}</div>}
+    <button onClick={handle} disabled={busy} style={{width:"100%",padding:11,background:"#dc2626",color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:14,cursor:busy?"default":"pointer",opacity:busy?0.6:1}}>{busy?"Ukládám...":"🏁 Uzavřít město a uložit do archivu"}</button>
+    </>)}
   </div>);
 }
 
 // ── NASTAVENÍ ─────────────────────────────────────────────────
-function Nastaveni({me,users,upUsers}){
+function Nastaveni({me,users,upUsers,city,camp,rows,closeCity}){
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");const [msg,setMsg]=useState("");
   async function changePw(){setMsg("");const f=users.find(u=>u.id===me.id);if(!f||f.password!==op){setMsg("❌ Staré heslo není správné.");return;}if(np.length<4){setMsg("❌ Heslo musí mít alespoň 4 znaky.");return;}if(np!==cp){setMsg("❌ Hesla se neshodují.");return;}await upUsers(users.map(u=>u.id===me.id?{...u,password:np}:u));setMsg("✅ Heslo změněno.");setOp("");setNp("");setCp("");}
-  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Nastavení</h2><div style={{background:"white",borderRadius:16,padding:15,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",gap:11,marginBottom:16,paddingBottom:14,borderBottom:"1px solid #f5f5f5"}}><div style={{width:44,height:44,background:OR,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:19}}>{me.name[0]}</div><div><div style={{fontWeight:800,fontSize:15,color:DK}}>{me.name}</div><div style={{color:"#ccc",fontSize:11}}>Obchodní zástupce · Pro-Factor</div></div></div><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>🔑 Změnit heslo</h3>{msg&&<div style={{padding:9,borderRadius:8,background:msg.startsWith("✅")?"#f0fdf4":"#fef2f2",color:msg.startsWith("✅")?GR:"#dc2626",fontSize:13,marginBottom:12}}>{msg}</div>}<div style={{marginBottom:11}}><label style={lbl}>Staré heslo</label><input type="password" style={inp} value={op} onChange={e=>setOp(e.target.value)}/></div><div style={{marginBottom:11}}><label style={lbl}>Nové heslo</label><input type="password" style={inp} value={np} onChange={e=>setNp(e.target.value)}/></div><div style={{marginBottom:14}}><label style={lbl}>Potvrzení</label><input type="password" style={inp} value={cp} onChange={e=>setCp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&changePw()}/></div><button onClick={changePw} style={{width:"100%",padding:12,background:OR,color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:14,cursor:"pointer"}}>Uložit nové heslo</button></div></div>);
+  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Nastavení</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",gap:11,marginBottom:16,paddingBottom:14,borderBottom:"1px solid #f5f5f5"}}><div style={{width:44,height:44,background:OR,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:19}}>{me.name[0]}</div><div><div style={{fontWeight:800,fontSize:15,color:DK}}>{me.name}</div><div style={{color:"#ccc",fontSize:11}}>Obchodní zástupce · Pro-Factor</div></div></div><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>🔑 Změnit heslo</h3>{msg&&<div style={{padding:9,borderRadius:8,background:msg.startsWith("✅")?"#f0fdf4":"#fef2f2",color:msg.startsWith("✅")?GR:"#dc2626",fontSize:13,marginBottom:12}}>{msg}</div>}<div style={{marginBottom:11}}><label style={lbl}>Staré heslo</label><input type="password" style={inp} value={op} onChange={e=>setOp(e.target.value)}/></div><div style={{marginBottom:11}}><label style={lbl}>Nové heslo</label><input type="password" style={inp} value={np} onChange={e=>setNp(e.target.value)}/></div><div style={{marginBottom:14}}><label style={lbl}>Potvrzení</label><input type="password" style={inp} value={cp} onChange={e=>setCp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&changePw()}/></div><button onClick={changePw} style={{width:"100%",padding:12,background:OR,color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:14,cursor:"pointer"}}>Uložit nové heslo</button></div><CloseCitySection city={city} camp={camp} rows={rows} closeCity={closeCity}/></div>);
 }
 
 // ── ADMIN ─────────────────────────────────────────────────────
-function Admin({users,cfg,upUsers,upCfg}){
+function Admin({users,cfg,upUsers,upCfg,city,camp,rows,closeCity}){
   const [ac,setAc]=useState(cfg?.accessCode||DEF_CODE);const [ap,setAp]=useState(cfg?.adminPassword||DEF_APW);const [saved,setSaved]=useState(false);
   async function save(){await upCfg({...cfg,accessCode:ac,adminPassword:ap});setSaved(true);setTimeout(()=>setSaved(false),2500);}
-  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Admin panel</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>🔐 Přístupové nastavení</h3><div style={{marginBottom:11}}><label style={lbl}>Přístupový kód</label><input style={inp} value={ac} onChange={e=>setAc(e.target.value)}/></div><div style={{marginBottom:14}}><label style={lbl}>Admin heslo</label><input type="password" style={inp} value={ap} onChange={e=>setAp(e.target.value)}/></div><button onClick={save} style={{width:"100%",padding:11,background:saved?GR:OR,color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:14,cursor:"pointer"}}>{saved?"✅ Uloženo!":"Uložit nastavení"}</button></div><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>👥 Uživatelé ({users.length}/15)</h3>{users.length===0&&<div style={{color:"#ccc",textAlign:"center",padding:"18px 0",fontSize:13}}>Žádní uživatelé.</div>}{users.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 0",borderBottom:"1px solid #f8f8f8"}}><div style={{width:32,height:32,background:OR,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:14}}>{u.name[0]}</div><div style={{flex:1}}><div style={{fontWeight:600,color:DK,fontSize:13}}>{u.name}</div><div style={{fontSize:10,color:"#ccc"}}>{u.createdAt?new Date(u.createdAt).toLocaleDateString("cs"):"—"}</div></div><button onClick={async()=>{if(window.confirm("Smazat "+u.name+"?"))await upUsers(users.filter(x=>x.id!==u.id));}} style={{background:"#fef2f2",border:"none",color:"#dc2626",padding:"5px 8px",borderRadius:7,fontSize:12,cursor:"pointer"}}>🗑️</button></div>))}</div><div style={{background:"#fff8f0",borderRadius:11,padding:13,fontSize:12,color:"#aaa",lineHeight:1.7}}><strong style={{color:DK}}>ℹ️ Přidat obchodníka:</strong><br/>Sdílej přístupový kód. Obchodník se zaregistruje přes "Nový uživatel".</div></div>);
+  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Admin panel</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>🔐 Přístupové nastavení</h3><div style={{marginBottom:11}}><label style={lbl}>Přístupový kód</label><input style={inp} value={ac} onChange={e=>setAc(e.target.value)}/></div><div style={{marginBottom:14}}><label style={lbl}>Admin heslo</label><input type="password" style={inp} value={ap} onChange={e=>setAp(e.target.value)}/></div><button onClick={save} style={{width:"100%",padding:11,background:saved?GR:OR,color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:14,cursor:"pointer"}}>{saved?"✅ Uloženo!":"Uložit nastavení"}</button></div><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>👥 Uživatelé ({users.length}/15)</h3>{users.length===0&&<div style={{color:"#ccc",textAlign:"center",padding:"18px 0",fontSize:13}}>Žádní uživatelé.</div>}{users.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 0",borderBottom:"1px solid #f8f8f8"}}><div style={{width:32,height:32,background:OR,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:14}}>{u.name[0]}</div><div style={{flex:1}}><div style={{fontWeight:600,color:DK,fontSize:13}}>{u.name}</div><div style={{fontSize:10,color:"#ccc"}}>{u.createdAt?new Date(u.createdAt).toLocaleDateString("cs"):"—"}</div></div><button onClick={async()=>{if(window.confirm("Smazat "+u.name+"?"))await upUsers(users.filter(x=>x.id!==u.id));}} style={{background:"#fef2f2",border:"none",color:"#dc2626",padding:"5px 8px",borderRadius:7,fontSize:12,cursor:"pointer"}}>🗑️</button></div>))}</div><div style={{background:"#fff8f0",borderRadius:11,padding:13,fontSize:12,color:"#aaa",lineHeight:1.7,marginBottom:12}}><strong style={{color:DK}}>ℹ️ Přidat obchodníka:</strong><br/>Sdílej přístupový kód. Obchodník se zaregistruje přes "Nový uživatel".</div><CloseCitySection city={city} camp={camp} rows={rows} closeCity={closeCity}/></div>);
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
