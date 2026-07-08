@@ -31,9 +31,9 @@ input,textarea,button,label{font-family:inherit;}
 @media (max-width:599px) and (orientation:portrait){
   .poster-main-grid{grid-template-columns:1fr 1fr!important;}
   .poster-ctr-col{display:none!important;}
+  .poster-side-col{grid-row:1!important;}
+  .strip29-cell{grid-column:1 / -1!important;grid-row:2!important;}
   .poster-btm-grid{grid-template-columns:1fr 1fr!important;}
-  .strip29-outer{grid-template-columns:1fr!important;}
-  .strip29-spacer{display:none!important;}
 }
 </style>
 </head>
@@ -567,11 +567,11 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
   return(
     <div style={{background:"white",borderRadius:12,padding:10,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
       <div style={{fontWeight:700,fontSize:12,color:DK,marginBottom:8}}>📋 Rozvržení plakátu <span style={{color:"#bbb",fontWeight:400,fontSize:10}}>· klepni 🔴/🟠/🟢 pro přepnutí grafiky</span></div>
-      <div className="poster-main-grid" style={{display:"grid",gridTemplateColumns:"100fr 363fr 100fr",gap:2,marginBottom:2,alignItems:"stretch"}}>
-        <div className="poster-side-col">
+      <div className="poster-main-grid" style={{display:"grid",gridTemplateColumns:"100fr 363fr 100fr",gridTemplateRows:"auto auto",gap:2,marginBottom:2,alignItems:"stretch"}}>
+        <div className="poster-side-col" style={{gridColumn:1,gridRow:"1 / span 2"}}>
           {renderGroups(leftGroups,"L")}
         </div>
-        <div className="poster-ctr-col">
+        <div className="poster-ctr-col" style={{gridColumn:2,gridRow:1}}>
           <div className="poster-ctr" style={{borderRadius:4,overflow:"hidden",position:"relative",background:"#f5f3ef"}}>
             {posterImg
               ?<img src={posterImg} alt="Plakát" style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/>
@@ -585,14 +585,12 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
             {posterImg&&<button onClick={()=>onSavePosterImg(null)} style={{position:"absolute",top:3,right:3,background:"rgba(0,0,0,0.45)",border:"none",color:"white",borderRadius:4,padding:"1px 5px",fontSize:10,cursor:"pointer",lineHeight:1.4}}>✕</button>}
           </div>
         </div>
-        <div className="poster-side-col">
+        <div className="strip29-cell" style={{gridColumn:2,gridRow:2}}>
+          <Tile row={rows.find(r=>!isMergeLabel(r.label)&&baseOf(r.label)==="29")} posLabel="29" horiz={true}/>
+        </div>
+        <div className="poster-side-col" style={{gridColumn:3,gridRow:"1 / span 2"}}>
           {renderGroups(rightGroups,"R")}
         </div>
-      </div>
-      <div className="strip29-outer" style={{display:"grid",gridTemplateColumns:"100fr 363fr 100fr",gap:2,marginBottom:2}}>
-        <div className="strip29-spacer"></div>
-        <div><Tile row={rows.find(r=>!isMergeLabel(r.label)&&baseOf(r.label)==="29")} posLabel="29" horiz={true}/></div>
-        <div className="strip29-spacer"></div>
       </div>
       <div className="poster-btm-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2}}>
         {btmColGroups.map((groups,ci)=>(<div key={ci} style={{display:"flex",flexDirection:"column",gap:2}}>{renderGroups(groups,"B"+ci)}</div>))}
