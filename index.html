@@ -32,6 +32,8 @@ input,textarea,button,label{font-family:inherit;}
   .poster-main-grid{grid-template-columns:1fr 1fr!important;}
   .poster-ctr-col{display:none!important;}
   .poster-btm-grid{grid-template-columns:1fr 1fr!important;}
+  .strip29-outer{grid-template-columns:1fr!important;}
+  .strip29-spacer{display:none!important;}
 }
 </style>
 </head>
@@ -582,7 +584,11 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
           {renderGroups(rightGroups,"R")}
         </div>
       </div>
-      <div className="strip29-row" style={{marginBottom:2}}><Tile row={rows.find(r=>!isMergeLabel(r.label)&&baseOf(r.label)==="29")} posLabel="29" horiz={true}/></div>
+      <div className="strip29-outer" style={{display:"grid",gridTemplateColumns:"1fr 2.5fr 1fr",gap:2,marginBottom:2}}>
+        <div className="strip29-spacer"></div>
+        <div><Tile row={rows.find(r=>!isMergeLabel(r.label)&&baseOf(r.label)==="29")} posLabel="29" horiz={true}/></div>
+        <div className="strip29-spacer"></div>
+      </div>
       <div className="poster-btm-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2}}>
         {btmColGroups.map((groups,ci)=>(<div key={ci} style={{display:"flex",flexDirection:"column",gap:2}}>{renderGroups(groups,"B"+ci)}</div>))}
       </div>
