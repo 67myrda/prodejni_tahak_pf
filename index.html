@@ -147,6 +147,9 @@ const DEF_QB=[
   {id:8,icon:"🧮",label:"Kalkulačka ceny",desc:"Spočítej cenu inzerce",target:"kalkulacka"},
   {id:9,icon:"📀",label:"Disc Google",desc:"Vybrané soubory pro Tahák",target:"disc_google"},
 ];
+// Bump toto číslo pokaždé, když se DEF_QB výše záměrně mění (nový layout dlaždic).
+// Appka pak automaticky přepíše uloženou (možná zastaralou/ručně upravenou) verzi v Firestore tou novou.
+const QB_VERSION=2;
 const DEF_ARGS=[
   {id:1,icon:"🔄",title:"Opakované čtení",desc:"Lidi se k plakátu vracejí každý týden.",detail:"Plakát čtou lidé opakovaně každý týden. Vaše reklama dostane opakované zhlédnutí po celý měsíc."},
   {id:2,icon:"🏆",title:"Lokální hrdina",desc:"Firmy na plakátu jsou součástí regionu.",detail:"Zákazníci vnímají inzerenty jako podporovatele kultury. Firma tak buduje pozitivní vztah s komunitou."},
@@ -313,7 +316,7 @@ function Shell({me,users,cfg,syncStatus,setSyncStatus,onLogout,upUsers,upCfg}){
       setCamp({startDate:"",endDate:"",marginPct:20,notes:"",summary:""});setIntro(DEF_INTRO);setCsize({sizeA1:"",sizeA2:"",price:""});
     }else{
       if(data.city)setCity(data.city);else setCity({name:"Vaše město",emoji:"🏙️"});
-      if(data.qb)setQb(data.qb);else setQb(DEF_QB);
+      if(data.qb&&data.qbVersion===QB_VERSION){setQb(data.qb);}else{setQb(DEF_QB);restPatch("pf_userdata/"+uid,{qb:DEF_QB,qbVersion:QB_VERSION});}
       if(data.prices)setPrices(data.prices);else setPrices(DEF_PRICES);
       if(data.texts)setTexts(data.texts);else setTexts(DEF_SCRIPTS);
       if(data.args)setArgs(data.args);else setArgs(DEF_ARGS);
