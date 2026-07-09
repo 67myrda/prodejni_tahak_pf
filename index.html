@@ -28,12 +28,12 @@ input,textarea,button,label{font-family:inherit;}
 .poster-ctr{display:flex;flex:1;min-height:60px;}
 .poster-ctr-col{display:flex;flex-direction:column;gap:2px;}
 .poster-side-col{display:flex;flex-direction:column;gap:2px;}
+.strip29-phone{display:none;}
 @media (max-width:599px) and (orientation:portrait){
   .poster-main-grid{grid-template-columns:1fr 1fr!important;}
   .poster-ctr-col{display:none!important;}
-  .poster-side-col{grid-row:1!important;}
-  .strip29-cell{grid-column:1 / -1!important;grid-row:2!important;}
   .poster-btm-grid{grid-template-columns:1fr 1fr!important;}
+  .strip29-phone{display:block!important;margin-bottom:2px;}
 }
 </style>
 </head>
@@ -488,6 +488,7 @@ function Prezentace({texts,args,metrics,objs,prices,csize,sv}){
 }
 
 
+function effLabel(r){return r.label||String(r.id||"");}
 function baseOf(label){const m=String(label||"").match(/^(\d+)/);return m?m[1]:String(label||"");}
 function isMergeLabel(label){return String(label||"").includes("+");}
 function mergeBases(label){return [...new Set(String(label||"").match(/\d+/g)||[])];}
@@ -500,15 +501,15 @@ function buildSlotGroups(baseSeq,rows){
   for(let i=0;i<baseSeq.length;i++){
     const b=baseSeq[i];
     if(used.has(b))continue;
-    const mergeRow=rows.find(r=>isMergeLabel(r.label)&&mergeBases(r.label)[0]===b&&mergeBases(r.label).every(x=>baseSeq.includes(x)));
+    const mergeRow=rows.find(r=>isMergeLabel(effLabel(r))&&mergeBases(effLabel(r))[0]===b&&mergeBases(effLabel(r)).every(x=>baseSeq.includes(x)));
     if(mergeRow){
-      const claimed=mergeBases(mergeRow.label);
+      const claimed=mergeBases(effLabel(mergeRow));
       claimed.forEach(x=>used.add(x));
       const weight=claimed.reduce((s,x)=>s+heightOf(x),0);
       groups.push({type:"merge",row:mergeRow,weight});
       continue;
     }
-    const matches=rows.filter(r=>!isMergeLabel(r.label)&&baseOf(r.label)===b);
+    const matches=rows.filter(r=>!isMergeLabel(effLabel(r))&&baseOf(effLabel(r))===b);
     used.add(b);
     groups.push({type:"single",base:b,rows:matches.length?matches:[null],weight:heightOf(b)});
   }
@@ -519,7 +520,7 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
   const [imgSt,setImgSt]=useState("");
   function Tile({row,posLabel,horiz,weight}){
     const r=row;
-    const lbl=r?r.label:posLabel;
+    const lbl=r?(r.label||String(r.id||"")):posLabel;
     const t=r&&TYPES[r.type];
     const bg=t?t.bg:"#f5f5f5";
     const col=t?t.color:"#ccc";
@@ -527,17 +528,17 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
     const words=r?(r.advertiser||"").trim().split(/\s+/).slice(0,2).join(" "):"";
     const w=weight||50;
     if(horiz){return(
-      <div onClick={()=>r&&onEdit(lbl)} style={{background:bg,border:bord,borderRadius:3,padding:"3px 6px",cursor:r?"pointer":"default",display:"flex",alignItems:"center",gap:4,minHeight:18}}>
+      <div onClick={()=>r&&onEdit(r.rowId)} style={{background:bg,border:bord,borderRadius:3,padding:"3px 6px",cursor:r?"pointer":"default",display:"flex",alignItems:"center",gap:4,minHeight:18}}>
         <span style={{fontSize:7,color:col,fontWeight:700,opacity:0.6,flexShrink:0}}>{lbl}</span>
         {words&&<span style={{fontSize:9,color:col,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{words}</span>}
-        {r&&<span onClick={e=>{e.stopPropagation();onToggle(lbl);}} style={{fontSize:10,cursor:"pointer",flexShrink:0}}>{GFX_META[r.gfxStatus||"red"].icon}</span>}
+        {r&&<span onClick={e=>{e.stopPropagation();onToggle(r.rowId);}} style={{fontSize:10,cursor:"pointer",flexShrink:0}}>{GFX_META[r.gfxStatus||"red"].icon}</span>}
       </div>
     );}
     return(
-      <div onClick={()=>r&&onEdit(lbl)} style={{flex:`${w} ${w} 0`,background:bg,border:bord,borderRadius:3,padding:"3px 4px",cursor:r?"pointer":"default",position:"relative",overflow:"hidden",minHeight:Math.round(w*0.6),display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
+      <div onClick={()=>r&&onEdit(r.rowId)} style={{flex:`${w} ${w} 0`,background:bg,border:bord,borderRadius:3,padding:"3px 4px",cursor:r?"pointer":"default",position:"relative",overflow:"hidden",minHeight:Math.round(w*0.6),display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
         <div style={{fontSize:7,color:col,fontWeight:700,opacity:0.55,lineHeight:1}}>{lbl}</div>
         {words&&<div style={{fontSize:9,color:col,fontWeight:600,lineHeight:1.25,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:Math.max(1,Math.round(w/37)),WebkitBoxOrient:"vertical",paddingRight:12}}>{words}</div>}
-        {r&&<div onClick={e=>{e.stopPropagation();onToggle(lbl);}} style={{position:"absolute",top:2,right:2,fontSize:10,lineHeight:1,cursor:"pointer"}}>{GFX_META[r.gfxStatus||"red"].icon}</div>}
+        {r&&<div onClick={e=>{e.stopPropagation();onToggle(r.rowId);}} style={{position:"absolute",top:2,right:2,fontSize:10,lineHeight:1,cursor:"pointer"}}>{GFX_META[r.gfxStatus||"red"].icon}</div>}
       </div>
     );
   }
@@ -567,11 +568,11 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
   return(
     <div style={{background:"white",borderRadius:12,padding:10,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
       <div style={{fontWeight:700,fontSize:12,color:DK,marginBottom:8}}>📋 Rozvržení plakátu <span style={{color:"#bbb",fontWeight:400,fontSize:10}}>· klepni 🔴/🟠/🟢 pro přepnutí grafiky</span></div>
-      <div className="poster-main-grid" style={{display:"grid",gridTemplateColumns:"100fr 363fr 100fr",gridTemplateRows:"auto auto",gap:2,marginBottom:2,alignItems:"stretch"}}>
-        <div className="poster-side-col" style={{gridColumn:1,gridRow:"1 / span 2"}}>
+      <div className="poster-main-grid" style={{display:"grid",gridTemplateColumns:"1fr 2.5fr 1fr",gap:2,marginBottom:2,alignItems:"stretch"}}>
+        <div className="poster-side-col">
           {renderGroups(leftGroups,"L")}
         </div>
-        <div className="poster-ctr-col" style={{gridColumn:2,gridRow:1}}>
+        <div className="poster-ctr-col">
           <div className="poster-ctr" style={{borderRadius:4,overflow:"hidden",position:"relative",background:"#f5f3ef"}}>
             {posterImg
               ?<img src={posterImg} alt="Plakát" style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/>
@@ -584,14 +585,13 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
             </label>
             {posterImg&&<button onClick={()=>onSavePosterImg(null)} style={{position:"absolute",top:3,right:3,background:"rgba(0,0,0,0.45)",border:"none",color:"white",borderRadius:4,padding:"1px 5px",fontSize:10,cursor:"pointer",lineHeight:1.4}}>✕</button>}
           </div>
+          <div className="strip29-tablet"><Tile row={rows.find(r=>!isMergeLabel(effLabel(r))&&baseOf(effLabel(r))==="29")} posLabel="29" horiz={true}/></div>
         </div>
-        <div className="strip29-cell" style={{gridColumn:2,gridRow:2}}>
-          <Tile row={rows.find(r=>!isMergeLabel(r.label)&&baseOf(r.label)==="29")} posLabel="29" horiz={true}/>
-        </div>
-        <div className="poster-side-col" style={{gridColumn:3,gridRow:"1 / span 2"}}>
+        <div className="poster-side-col">
           {renderGroups(rightGroups,"R")}
         </div>
       </div>
+      <div className="strip29-phone"><Tile row={rows.find(r=>!isMergeLabel(effLabel(r))&&baseOf(effLabel(r))==="29")} posLabel="29" horiz={true}/></div>
       <div className="poster-btm-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2}}>
         {btmColGroups.map((groups,ci)=>(<div key={ci} style={{display:"flex",flexDirection:"column",gap:2}}>{renderGroups(groups,"B"+ci)}</div>))}
       </div>
@@ -736,13 +736,13 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
     const url=URL.createObjectURL(blob);
     window.open(url,"_blank");
   }
-  function toggleGfx(label){sv("rows",rows.map(r=>r.label===label?{...r,gfxStatus:nextGfx(r.gfxStatus)}:r));}
+  function toggleGfx(rowId){sv("rows",rows.map(r=>r.rowId===rowId?{...r,gfxStatus:nextGfx(r.gfxStatus)}:r));}
   function getByLabel(label){return rows.find(r=>r.label===label);}
-  function openEditByLabel(label){const r=getByLabel(label);if(r){setRd({...r});setERid(r.rowId);}}
+  function openEditByRowId(rowId){const r=rows.find(x=>x.rowId===rowId);if(r){setRd({...r});setERid(r.rowId);}}
   return(<div style={{padding:"16px 16px 0"}}>
     <h2 style={{margin:"0 0 14px",fontSize:17,fontWeight:900,color:DK}}>Vizitka – <span style={{color:OR}}>Prodaná místa</span></h2>
     <div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:11}}><div style={{fontWeight:800,fontSize:13,color:DK}}>📅 {cityName||"Kampaň"}</div><button onClick={()=>{setCd({...camp});setECamp(true);}} style={{background:"transparent",border:`1.5px solid ${OR}`,color:OR,padding:"4px 9px",borderRadius:7,fontSize:12,fontWeight:600,cursor:"pointer"}}>✏️</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,marginBottom:7}}><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Začátek</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{fmtDate(camp.startDate)}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Konec</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{fmtDate(camp.endDate)}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Dní celkem</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{days||"—"}</div></div><div style={{background:"#fff3e8",borderRadius:8,padding:"8px 5px",border:`1px solid ${OR}33`}}><div style={{fontSize:9.5,color:OR,fontWeight:600}}>Pracovních dní</div><div style={{fontWeight:800,fontSize:11.5,color:OR,marginTop:2}}>{camp.startDate&&camp.endDate?workDays:"—"}</div></div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:9,marginBottom:11}}><div style={{fontSize:10,color:"#bbb",marginBottom:5}}>Inzeráty</div><div style={{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}}>{nQ>0&&<span style={{background:"#fed7aa",color:"#9a3412",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nQ} ?</span>}{nV>0&&<span style={{background:"#f5f5f5",color:"#6b7280",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10,border:"1px solid #d1d5db"}}>{nV} V</span>}{nN>0&&<span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nN} N</span>}{nS>0&&<span style={{background:"#fef3c7",color:"#92400e",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nS} S</span>}{nZ>0&&<span style={{background:"#e7d2b8",color:"#78350f",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nZ} Z</span>}{nJ>0&&<span style={{background:"#dbeafe",color:"#1d4ed8",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nJ} J</span>}<span style={{color:"#ccc",margin:"0 2px"}}>·</span><span style={{background:"#fef2f2",color:"#dc2626",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🔴 {nGfxRed}</span><span style={{background:"#fff7ed",color:"#c2410c",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🟠 {nGfxOrange}</span><span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🟢 {nGfxGreen}</span></div></div>
-    <PosterGrid rows={rows} onToggle={toggleGfx} onEdit={openEditByLabel} posterImg={posterImg} onSavePosterImg={onSavePosterImg}/>
+    <PosterGrid rows={rows} onToggle={toggleGfx} onEdit={openEditByRowId} posterImg={posterImg} onSavePosterImg={onSavePosterImg}/>
     <div style={{background:"#eef6ff",borderRadius:10,padding:12,marginBottom:9,border:"1.5px solid #bfdbfe"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:camp.summary?8:0}}><div style={{fontSize:11,fontWeight:700,color:"#1d4ed8"}}>📝 Shrnutí města</div><button onClick={()=>{setSumTmp(camp.summary||"");setEditSum(true);}} style={{background:"transparent",border:"1.5px solid #1d4ed8",color:"#1d4ed8",padding:"3px 9px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer"}}>✏️ Upravit</button></div>{camp.summary?<div style={{fontSize:13,color:"#1e3a8a",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{camp.summary}</div>:<div style={{fontSize:12,color:"#93c5fd",fontStyle:"italic"}}>Klepni na Upravit pro přidání poznámky...</div>}</div>
     <div style={{background:"#fff8f0",borderRadius:10,padding:12,marginBottom:9}}><div style={{fontSize:10,color:"#bbb"}}>Celková tržba</div><div style={{fontSize:24,fontWeight:900,color:OR}}>{totalRev.toLocaleString("cs")} Kč</div>{minRevNum!==null&&<div style={{fontSize:11,color:belowMin?"#dc2626":"#16a34a",fontWeight:600,marginTop:4}}>{belowMin?`Zbývá do minima: ${remainingToMin.toLocaleString("cs")} Kč`:"✓ Minimální tržba splněna"}</div>}</div>
     <div style={{background:"#f0fdf4",borderRadius:10,padding:12,marginBottom:9}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7}}><div style={{fontSize:11,color:"#555",fontWeight:600}}>Marže</div><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{MARGINS.map(pct=>(<button key={pct} onClick={()=>sv("camp",{...camp,marginPct:pct})} style={{position:"relative",padding:"2px 6px",borderRadius:5,border:camp.marginPct===pct?`2px solid ${GR}`:(recPct===pct?`1.5px dashed ${OR}`:"1.5px solid #ccc"),background:camp.marginPct===pct?GR:"white",color:camp.marginPct===pct?"white":"#777",fontWeight:camp.marginPct===pct?700:400,fontSize:11,cursor:"pointer"}}>{pct}%{recPct===pct&&camp.marginPct!==pct?"•":""}</button>))}</div></div><div style={{fontSize:20,fontWeight:900,color:GR}}>{margin.toLocaleString("cs")} Kč</div><div style={{fontSize:10,color:"#aaa"}}>marže {camp.marginPct}% z tržby{recPct!==null&&recPct!==camp.marginPct&&` · doporučeno ${recPct}%`}</div></div>
@@ -758,7 +758,7 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
         <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}><TBadge t={row.type}/></div>
         <div style={{fontSize:10,fontWeight:400,color:"#6366f1"}}>{row.price2?parseInt(row.price2).toLocaleString("cs"):"—"}</div>
         <div style={{fontSize:10.5,fontWeight:600,color:DK}}>{row.price?parseInt(row.price).toLocaleString("cs"):"—"}</div>
-        <div style={{textAlign:"center",cursor:"pointer"}} onClick={()=>toggleGfx(row.label)}><GfxBadge s={row.gfxStatus}/></div>
+        <div style={{textAlign:"center",cursor:"pointer"}} onClick={()=>toggleGfx(row.rowId)}><GfxBadge s={row.gfxStatus}/></div>
         <div style={{textAlign:"center",fontSize:11}}>{row.signedBy==="F"?"♀️":row.signedBy==="M"?"♂️":<span style={{color:"#eee"}}>–</span>}</div>
         <div style={{display:"flex",alignItems:"center",gap:0,minWidth:0}}>
           <span className="nav-col" style={{fontSize:9.5,color:"#7c3aed",fontWeight:500,minWidth:38,flexShrink:0}}>{row.existingPrice?parseInt(row.existingPrice).toLocaleString("cs"):"—"}</span>
