@@ -27,11 +27,15 @@ input,textarea,button,label{font-family:inherit;}
 .poster-ctr-col{display:flex;flex-direction:column;gap:2px;}
 .poster-side-col{display:flex;flex-direction:column;gap:2px;}
 .strip29-phone{display:none;}
+/* Spodní řada: výška odvozená z fyzických mm (sloupec 139 mm široký × 103 mm vysoký) přes padding-top — funguje spolehlivě všude */
+.poster-btm-wrap{position:relative;width:100%;padding-top:calc((100% - 6px)*103/139/4);}
+.poster-btm-grid{position:absolute;top:0;left:0;right:0;bottom:0;}
 @media (max-width:599px) and (orientation:portrait){
   .poster-main-grid{grid-template-columns:1fr 1fr!important;}
   .poster-ctr-col{display:none!important;}
   .poster-btm-grid{grid-template-columns:1fr 1fr!important;}
-  .strip29-phone{display:block!important;margin-bottom:2px;}
+  .poster-btm-wrap{padding-top:calc((100% - 2px)*103/139 + 2px);}
+  .strip29-phone{display:flex!important;flex-direction:column;aspect-ratio:363/22;min-height:20px;margin-bottom:2px;}
 }
 </style>
 </head>
@@ -642,6 +646,9 @@ function effLabel(r){return r.label||String(r.id||"");}
 function baseOf(label){const m=String(label||"").match(/^(\d+)/);return m?m[1]:String(label||"");}
 function isMergeLabel(label){return String(label||"").includes("+");}
 function mergeBases(label){return [...new Set(String(label||"").match(/\d+/g)||[])];}
+// Řazení řádků dle labelu: číslo, pak písmeno (7a < 7b < 8), sloučené dle prvního čísla (12+13 → 12), nečíselné na konec
+function labelSortKey(r){const l=String(effLabel(r));const m=l.match(/^(\d+)([a-zA-Z]?)/);return m?[parseInt(m[1],10),m[2]||""]:[9999,l];}
+function sortRowsByLabel(arr){return [...arr].sort((a,b)=>{const A=labelSortKey(a),B=labelSortKey(b);return (A[0]-B[0])||(A[1]<B[1]?-1:A[1]>B[1]?1:0);});}
 // Skutečná výška pole v mm (z tabulky rozmery-poli-a-sablony-emailu.md + upřesnění 10.7.2026) - určuje proporcionální výšku dlaždice
 // Poloviční pole: 14a/b, 15a/b = 139x48 (jako 12/13/16/17); 7a/22a = 100x42, 7b/22b = 100x63. Mezera mezi poli na plakátu = 7 mm.
 const POS_HEIGHT_MM={1:42,2:63,3:42,4:63,5:42,6:63,7:112,8:42,9:63,10:42,11:63,12:48,13:48,14:103,15:103,16:48,17:48,18:63,19:42,20:63,21:42,22:112,23:63,24:42,25:63,26:42,27:63,28:42,29:22,"7a":42,"7b":63,"14a":48,"14b":48,"15a":48,"15b":48,"22a":42,"22b":63};
@@ -713,9 +720,7 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
   }
   const LEFT_BASES=['1','2','3','4','5','6','7','8','9','10','11'];
   const RIGHT_BASES=['28','27','26','25','24','23','22','21','20','19','18'];
-  const BTM_GROUPS=[['12','13'],['14'],['15'],['17','16']]; // 17 nad 16 — dle fyzického plakátu
-  // Výška spodního sloupce = 103 mm (48+7+48 = 103 = pole 14/15), šířka pole 139 mm → poměr stran drží fyzické proporce nezávisle na délce textu
-  const BTM_COL_AR="139/103";
+  const BTM_GROUPS=[['12','13'],['14'],['15'],['17','16']]; // 17 nad 16 — dle fyzického plakátu; výšku spodní řady určuje .poster-btm-wrap (padding-top z mm)
   const leftGroups=buildSlotGroups(LEFT_BASES,rows);
   const rightGroups=buildSlotGroups(RIGHT_BASES,rows);
   const btmColGroups=BTM_GROUPS.map(g=>buildSlotGroups(g,rows));
@@ -745,9 +750,11 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
           {renderGroups(rightGroups,"R")}
         </div>
       </div>
-      <div className="strip29-phone" style={{aspectRatio:"363/22",minHeight:20,display:"flex",flexDirection:"column"}}><Tile row={rows.find(r=>!isMergeLabel(effLabel(r))&&baseOf(effLabel(r))==="29")} posLabel="29" horiz={true}/></div>
-      <div className="poster-btm-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2}}>
-        {btmColGroups.map((groups,ci)=>(<div key={ci} style={{display:"flex",flexDirection:"column",gap:2,aspectRatio:BTM_COL_AR,minHeight:0}}>{renderGroups(groups,"B"+ci)}</div>))}
+      <div className="strip29-phone"><Tile row={rows.find(r=>!isMergeLabel(effLabel(r))&&baseOf(effLabel(r))==="29")} posLabel="29" horiz={true}/></div>
+      <div className="poster-btm-wrap">
+        <div className="poster-btm-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2}}>
+          {btmColGroups.map((groups,ci)=>(<div key={ci} style={{display:"flex",flexDirection:"column",gap:2,minHeight:0}}>{renderGroups(groups,"B"+ci)}</div>))}
+        </div>
       </div>
     </div>
   );
@@ -775,7 +782,7 @@ function Vizitka({rows,camp,totalRev,cityName,sv,posterImg,onSavePosterImg}){
   const marginF=Math.round(revF*(camp.marginPct/100))+kBonusF,marginM=Math.round(revM*(camp.marginPct/100))+kBonusM;
   const totalRev2=rows.reduce((s,r)=>s+(parseFloat(r.price2)||0),0);
   const totalNav=rows.reduce((s,r)=>s+((r.existingPrice&&r.price)?(parseFloat(r.price)-parseFloat(r.existingPrice)):0),0);
-  function addRow(){const mx=Math.max(...rows.map(r=>r.id||0),0);const lbl=String(mx+1);sv("rows",[...rows,{id:mx+1,rowId:"r"+Date.now(),label:lbl,type:"?",price:"",price2:"",existingPrice:"",navyseno:"",gfxStatus:"red",advertiser:"",graphic:"",signedBy:"",kBonus:""}]);}
+  function addRow(){const mx=Math.max(...rows.map(r=>r.id||0),0);const lbl=String(mx+1);sv("rows",sortRowsByLabel([...rows,{id:mx+1,rowId:"r"+Date.now(),label:lbl,type:"?",price:"",price2:"",existingPrice:"",navyseno:"",gfxStatus:"red",advertiser:"",graphic:"",signedBy:"",kBonus:""}]));}
 
   function openPrintPage(){
     const typBg={"?":"#fed7aa",V:"#f5f5f5",N:"#dcfce7",S:"#fff7ed",Z:"#e7d2b8",J:"#dbeafe",K:"#e9d5ff"};
@@ -942,7 +949,7 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
     {eRid!==null&&(()=>{
   const delBtn=<button onClick={()=>{if(window.confirm("Smazat řádek #"+(rd.label||rd.id)+"?"))sv("rows",rows.filter(r=>r.rowId!==eRid));setERid(null);}} style={{background:"#fef2f2",border:"1.5px solid #fca5a5",color:"#dc2626",padding:"3px 9px",borderRadius:7,fontSize:12,cursor:"pointer",fontWeight:700}}>🗑️</button>;
   return(
-  <Modal title={"Pole "+( rd.label||rd.id)} onClose={()=>setERid(null)} onSave={()=>{sv("rows",rows.map(r=>r.rowId===eRid?rd:r));setERid(null);}} extraHeader={delBtn}>
+  <Modal title={"Pole "+( rd.label||rd.id)} onClose={()=>setERid(null)} onSave={()=>{sv("rows",sortRowsByLabel(rows.map(r=>r.rowId===eRid?rd:r)));setERid(null);}} extraHeader={delBtn}>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:11}}>
       <div><label style={lbl}>Označení pozice</label><input style={inp} value={rd.label||""} onChange={e=>setRd(p=>({...p,label:e.target.value}))} placeholder="např. 7a, 12+13..."/></div>
       <div><label style={lbl}>Podepsal(a)</label><div style={{display:"flex",gap:5,marginTop:4}}>{[["F","♀️ Monika"],["M","♂️ Myrda"]].map(([v,l])=>(<button key={v} onClick={()=>setRd(p=>({...p,signedBy:p.signedBy===v?"":v}))} style={{flex:1,padding:"7px 0",borderRadius:8,border:rd.signedBy===v?`2px solid ${OR}`:"1.5px solid #e5e7eb",background:rd.signedBy===v?"#fff3e8":"white",fontWeight:rd.signedBy===v?700:400,fontSize:11,cursor:"pointer",color:rd.signedBy===v?OR:"#666"}}>{l}</button>))}</div></div>
