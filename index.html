@@ -137,6 +137,18 @@ async function restGet(path){
     return docToObj(await r.json());
   }catch(e){console.warn("restGet",path,e.message);return null;}
 }
+// ── Fronta nepotvrzených zápisů (odolnost při výpadku signálu) ─
+// Selhané zápisy čekají v localStorage a opakují se (online event,
+// před každým pollingem, při startu). Polling nikdy nepřepíše pole,
+// pro které existuje čekající vlastní zápis.
+function pendKey(uid){return "pf_pending_"+uid;}
+function getPending(uid){return lsGet(pendKey(uid))||{};}
+function setPendingLS(uid,p){lsSet(pendKey(uid),p);}
+function addPending(uid,field,value,ts){const p=getPending(uid);p[field]={value:value,ts:ts};setPendingLS(uid,p);}
+function clearPendingField(uid,field,ts){const p=getPending(uid);if(p[field]&&p[field].ts===ts){delete p[field];setPendingLS(uid,p);}}
+// Počet otevřených editačních modalů — během editace se poll data neaplikují
+let EDIT_GUARD=0;
+
 async function restPatch(path,data){
   try{
     const fields={};
@@ -299,6 +311,7 @@ function BackDialog({onStay,onLeave}){
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}><div style={{background:"white",borderRadius:16,padding:24,maxWidth:320,width:"100%"}}><div style={{fontSize:32,textAlign:"center",marginBottom:12}}>🚪</div><div style={{fontWeight:800,fontSize:17,color:DK,textAlign:"center",marginBottom:8}}>Opustit aplikaci?</div><div style={{fontSize:14,color:"#888",textAlign:"center",marginBottom:22,lineHeight:1.5}}>Data jsou průběžně ukládána do cloudu.</div><div style={{display:"flex",gap:10}}><button onClick={onStay} style={{flex:1,padding:"11px 0",background:"#f5f5f5",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",color:DK}}>Pokračovat</button><button onClick={onLeave} style={{flex:1,padding:"11px 0",background:"#dc2626",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",color:"white"}}>Odejít</button></div></div></div>);
 }
 function Modal({title,children,onClose,onSave,extraHeader}){
+  useEffect(()=>{EDIT_GUARD++;return()=>{EDIT_GUARD=Math.max(0,EDIT_GUARD-1);};},[]);
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div style={{background:"white",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:680,maxHeight:"92vh",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}><div style={{padding:"13px 17px",borderBottom:"1px solid #f0f0f0",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}><div style={{fontWeight:800,fontSize:14,color:DK,flex:1}}>{title}</div>{extraHeader&&<div style={{marginRight:6}}>{extraHeader}</div>}<button onClick={onClose} style={{background:"#f5f5f5",border:"none",width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:15,color:"#888",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button></div><div style={{flex:1,overflowY:"auto",padding:"13px 17px"}}>{children}</div>{onSave&&<div style={{padding:"11px 17px",borderTop:"1px solid #f0f0f0",display:"flex",gap:8,flexShrink:0}}><button onClick={onClose} style={{flex:1,padding:11,background:"#f5f5f5",border:"none",borderRadius:10,fontWeight:600,fontSize:13,cursor:"pointer",color:"#666"}}>Zrušit</button><button onClick={onSave} style={{flex:2,padding:11,background:OR,color:"white",border:"none",borderRadius:10,fontWeight:700,fontSize:13,cursor:"pointer"}}>💾 Uložit</button></div>}</div></div>);
 }
 
@@ -411,8 +424,25 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
   const [objs,setObjs]=useState(null);const [rows,setRows]=useState(null);const [camp,setCamp]=useState(null);
   const [intro,setIntro]=useState(null);const [csize,setCsize]=useState(null);const [rdy,setRdy]=useState(false);
   const [cityImgs,setCityImgs]=useState({posterImg:null,leafletImg:null});
+  const lastLocalWrite=useRef(0);
+
+  async function flushPending(){
+    const p=getPending(uid);const keys=Object.keys(p);
+    if(keys.length===0)return true;
+    setSyncStatus("saving");
+    let allOk=true;
+    for(const k of keys){
+      const item=p[k];
+      if(item.ts>lastLocalWrite.current)lastLocalWrite.current=item.ts;
+      const ok=await restPatch("pf_userdata/"+uid,{[k]:item.value,updatedAt:item.ts});
+      if(ok)clearPendingField(uid,k,item.ts);else allOk=false;
+    }
+    setSyncStatus(allOk?"ok":"err");
+    return allOk;
+  }
 
   async function loadData(){
+    await flushPending(); // doručit případné zápisy z minulé (offline) session PŘED čtením
     const data=await restGet("pf_userdata/"+uid);
     Promise.all([IDB.get("cityimg_"+uid+"_poster"),IDB.get("cityimg_"+uid+"_leaflet")]).then(([p,l])=>setCityImgs({posterImg:p,leafletImg:l}));
     if(!data){
@@ -437,28 +467,50 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
 
   useEffect(()=>{loadData();},[uid]);
 
-  // Poll for changes every 30 seconds (multi-device sync)
+  // Poll every 30 s (multi-device sync) — s ochranami:
+  // (a) neaplikuje se při otevřeném editačním modalu,
+  // (b) nejdřív se doručí vlastní čekající zápisy,
+  // (c) starší serverová data nepřepíšou novější lokální stav,
+  // (d) pole s čekajícím zápisem se nepřepisují.
   useEffect(()=>{
     if(!rdy)return;
     const interval=setInterval(async()=>{
+      if(EDIT_GUARD>0)return;
+      await flushPending();
       const data=await restGet("pf_userdata/"+uid);
       if(!data)return;
-      if(data.city)setCity(data.city);if(data.qb)setQb(data.qb);if(data.prices)setPrices(data.prices);
-      if(data.texts)setTexts(data.texts);if(data.args)setArgs(data.args);if(data.metrics)setMetrics(data.metrics);
-      if(data.objs)setObjs(data.objs);if(data.rows)setRows(data.rows);if(data.camp)setCamp(data.camp);
-      if(data.intro!==undefined)setIntro(data.intro);if(data.csize)setCsize(data.csize);
+      if(data.updatedAt&&lastLocalWrite.current&&data.updatedAt<lastLocalWrite.current)return;
+      const pend=getPending(uid);
+      const apply=(f,fn,v)=>{if(!pend[f])fn(v);};
+      if(data.city)apply("city",setCity,data.city);if(data.qb)apply("qb",setQb,data.qb);if(data.prices)apply("prices",setPrices,data.prices);
+      if(data.texts)apply("texts",setTexts,data.texts);if(data.args)apply("args",setArgs,data.args);if(data.metrics)apply("metrics",setMetrics,data.metrics);
+      if(data.objs)apply("objs",setObjs,data.objs);if(data.rows)apply("rows",setRows,migrateRows(data.rows));if(data.camp)apply("camp",setCamp,data.camp);
+      if(data.intro!==undefined)apply("intro",setIntro,data.intro);if(data.csize)apply("csize",setCsize,data.csize);
     },30000);
     return()=>clearInterval(interval);
   },[uid,rdy]);
+
+  // Po návratu signálu okamžitě doručit čekající zápisy
+  useEffect(()=>{
+    const h=()=>{flushPending();};
+    window.addEventListener("online",h);
+    return()=>window.removeEventListener("online",h);
+  },[uid]);
 
   async function sv(field,value){
     // Update local state immediately
     const setters={city:setCity,qb:setQb,prices:setPrices,texts:setTexts,args:setArgs,metrics:setMetrics,objs:setObjs,rows:setRows,camp:setCamp,intro:setIntro,csize:setCsize};
     if(setters[field])setters[field](value);
-    // Save to Firestore
+    // Zápis přes frontu: při selhání zůstane čekat a opakuje se
+    const ts=Date.now();
+    lastLocalWrite.current=ts;
+    addPending(uid,field,value,ts);
     setSyncStatus("saving");
-    const ok=await restPatch("pf_userdata/"+uid,{[field]:value});
-    setSyncStatus(ok?"ok":"err");
+    const ok=await restPatch("pf_userdata/"+uid,{[field]:value,updatedAt:ts});
+    if(ok){
+      clearPendingField(uid,field,ts);
+      setSyncStatus(Object.keys(getPending(uid)).length?"err":"ok");
+    }else setSyncStatus("err");
   }
 
   function saveCity(cityData){
@@ -490,7 +542,11 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
     const newCity={name:"Vaše město",emoji:"🏙️"};
     const newCamp={startDate:"",endDate:"",marginPct:20,notes:"",summary:"",revenueNoDiscount:"",minRevenue:"",revenueThisYear:""};
     const newRows=mkRows();
-    await restPatch("pf_userdata/"+uid,{city:newCity,camp:newCamp,rows:newRows});
+    const resetTs=Date.now();
+    lastLocalWrite.current=resetTs;
+    const ok2=await restPatch("pf_userdata/"+uid,{city:newCity,camp:newCamp,rows:newRows,updatedAt:resetTs});
+    if(!ok2)return{ok:false,msg:"Archiv uložen, ale reset města selhal. Zkontroluj připojení a zkus znovu."};
+    setPendingLS(uid,{}); // zahodit čekající zápisy staré edice
     setCity(newCity);setCamp(newCamp);setRows(newRows);
     IDB.del("cityimg_"+uid+"_poster");IDB.del("cityimg_"+uid+"_leaflet");
     setCityImgs({posterImg:null,leafletImg:null});
