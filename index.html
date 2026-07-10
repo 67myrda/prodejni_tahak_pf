@@ -695,8 +695,10 @@ function heightOf(key){const k=String(key||"");if(POS_HEIGHT_MM[k]!=null)return 
 // Šířky polí v mm (pro rozměr v předmětu e-mailu): 1–11 a 18–28 = 100, 12–17 = 139, 29 = 363; poloviční dle základu
 const POS_WIDTH_MM={29:363,"7a":100,"7b":100,"22a":100,"22b":100,"14a":139,"14b":139,"15a":139,"15b":139};
 for(let _i=1;_i<=28;_i++)POS_WIDTH_MM[_i]=(_i>=12&&_i<=17)?139:100;
-// Rozměr "ŠxV" pro standardní pozice; sloučená a nestandardní pole → prázdný (dle rozmery-a-sablony-v2.md se nedopočítává)
-function dimOf(label){const k=String(label||"");if(!k||isMergeLabel(k))return "";const h=POS_HEIGHT_MM[k];if(h==null)return "";const w=POS_WIDTH_MM[k]!=null?POS_WIDTH_MM[k]:POS_WIDTH_MM[baseOf(k)];return w?`${w}x${h}`:"";}
+// Rozměr "ŠxV" pro standardní pozice; sloučená pole se stejnou šířkou = vypočtený rozměr (suma výšek + 7mm mezery), jinak prázdný
+function dimOf(label){const k=String(label||"");if(!k)return "";
+  if(isMergeLabel(k)){const bs=mergeBases(k);if(!bs.length)return "";const hs=bs.map(b=>POS_HEIGHT_MM[b]);if(hs.some(h=>h==null))return "";const ws=bs.map(b=>POS_WIDTH_MM[b]);if(ws.some(w=>w==null)||new Set(ws).size>1)return "";return ws[0]+"x"+(hs.reduce((a,b)=>a+b,0)+POSTER_GAP_MM*(bs.length-1));}
+  const h=POS_HEIGHT_MM[k];if(h==null)return "";const w=POS_WIDTH_MM[k]!=null?POS_WIDTH_MM[k]:POS_WIDTH_MM[baseOf(k)];return w?`${w}x${h}`:"";}
 // E-maily — "zákazník jako hub" (fáze E1). Šablony: rozmery-a-sablony-v2.md
 const GFX_EMAIL="dzob@seznam.cz";
 const EMAIL_SIGN="\n\nMonika Řeháčková / Miroslav Kvaček\nOZ Pro-factor";
@@ -1021,8 +1023,8 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
     <div style={{marginBottom:11}}><label style={lbl}>Grafika / Poznámka</label><textarea style={{...inp,minHeight:60,resize:"vertical"}} value={rd.graphic} onChange={e=>setRd(p=>({...p,graphic:e.target.value}))} placeholder="Poznámky, termíny..."/></div>
     {(()=>{
       const dim=dimOf(rd.label||rd.id);
-      const custName=(rd.advertiser||"").split("/")[0].replace(/_/g," ").trim();
-      const subj=`${cityName||""} č.${rd.label||rd.id}${dim?` (${dim})`:""}${custName?` ${custName}`:""}`.trim();
+      const custName=(rd.advertiser||"").split("/")[0].replace(/_/g," ").replace(/^[^\p{L}\p{N}]+/u,"").trim();
+      const subj=`${cityName||""} č. ${rd.label||rd.id}${dim?` (${dim})`:""}${custName?` ${custName}`:""}`.trim();
       const btnS={width:"100%",textAlign:"left",padding:"8px 10px",borderRadius:8,border:"1.5px solid #bae6fd",background:"white",color:"#0369a1",fontWeight:600,fontSize:11.5,cursor:"pointer"};
       return(
       <div style={{marginBottom:6,background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:10,padding:10}}>
