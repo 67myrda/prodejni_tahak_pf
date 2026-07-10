@@ -7,6 +7,7 @@
 <script src="./libs/react.production.min.js"></script>
 <script src="./libs/react-dom.production.min.js"></script>
 <script src="./libs/babel.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:system-ui,-apple-system,sans-serif;background:#FAF8F5;-webkit-tap-highlight-color:transparent;}
@@ -52,6 +53,43 @@ const inp={width:"100%",padding:"12px 14px",border:"1.5px solid #e5e7eb",borderR
 
 // ── Firestore REST API (no SDK needed) ────────────────────────
 const FB_PROJECT="pf-tahak-tahax67";
+
+// ── Google Drive přes GIS (fáze E1) — vzor z GOORN (google-drive-integrace-postup-a-reseni.md) ──
+const GIS_CLIENT_ID=""; // DOPLNIT: Web client ID z Firebase Console → Authentication → Sign-in method → Google → Web SDK configuration
+const DRIVE_TOKEN_KEY="pf_drive_token",DRIVE_TOKEN_TS_KEY="pf_drive_token_ts",DRIVE_TOKEN_MAX_AGE=55*60*1000;
+var _gisTokenClient=null;
+function saveDriveToken(t){try{if(t){localStorage.setItem(DRIVE_TOKEN_KEY,t);localStorage.setItem(DRIVE_TOKEN_TS_KEY,String(Date.now()));}else{localStorage.removeItem(DRIVE_TOKEN_KEY);localStorage.removeItem(DRIVE_TOKEN_TS_KEY);}}catch(e){}}
+function loadDriveToken(){try{const t=localStorage.getItem(DRIVE_TOKEN_KEY),ts=localStorage.getItem(DRIVE_TOKEN_TS_KEY);if(!t||!ts)return null;if(Date.now()-parseInt(ts,10)>DRIVE_TOKEN_MAX_AGE)return null;return t;}catch(e){return null;}}
+function requestDriveAccess(onSuccess,onError){
+  if(!GIS_CLIENT_ID){onError("Disk zatím není nakonfigurován (chybí Client ID v kódu).");return;}
+  if(!window.google||!window.google.accounts||!window.google.accounts.oauth2){onError("Přihlašovací knihovna Googlu se ještě nenahrála. Zkus to za chvíli znovu.");return;}
+  if(!_gisTokenClient){
+    _gisTokenClient=window.google.accounts.oauth2.initTokenClient({
+      client_id:GIS_CLIENT_ID,
+      scope:"https://www.googleapis.com/auth/drive.file",
+      callback:function(tr){if(tr&&tr.access_token){saveDriveToken(tr.access_token);onSuccess(tr.access_token);}else{onError("Disk se nepřipojil (chybí přístupový token).");}},
+      error_callback:function(err){
+        if(err&&err.type==="popup_closed"){/* uživatel zavřel okno sám — není chyba */}
+        else if(err&&err.type==="popup_failed_to_open"){onError("Prohlížeč zablokoval okno přihlášení. Povol vyskakovací okna a zkus znovu.");}
+        else{onError("Přihlášení k Disku selhalo.");}
+      }
+    });
+  }
+  _gisTokenClient.requestAccessToken();
+}
+// Upload souboru na Drive (multipart) + sdílení "kdokoli s odkazem – prohlížení" → vrací {id, webViewLink}
+// Error handling: 401 = token neplatný (smazat, znovu připojit) · 403 = jiná příčina (Drive API vypnuté / origins) — token NEmazat
+async function driveUpload(token,file,name){
+  const meta={name:name||file.name||("tahak-"+Date.now()),mimeType:file.type||"application/octet-stream"};
+  const fd=new FormData();
+  fd.append("metadata",new Blob([JSON.stringify(meta)],{type:"application/json"}));
+  fd.append("file",file);
+  const up=await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",{method:"POST",headers:{Authorization:"Bearer "+token},body:fd});
+  if(!up.ok){const e=new Error("Drive upload selhal");e.status=up.status;if(up.status===401)saveDriveToken(null);throw e;}
+  const f=await up.json();
+  try{await fetch("https://www.googleapis.com/drive/v3/files/"+f.id+"/permissions",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({role:"reader",type:"anyone"})});}catch(e){}
+  return f;
+}
 const FB_KEY="AIzaSyCxCGjhWgYu-W9yc2zyyHwIh_vpvb-v27A";
 const FB_BASE=`https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents`;
 
@@ -654,6 +692,23 @@ function sortRowsByLabel(arr){return [...arr].sort((a,b)=>{const A=labelSortKey(
 const POS_HEIGHT_MM={1:42,2:63,3:42,4:63,5:42,6:63,7:112,8:42,9:63,10:42,11:63,12:48,13:48,14:103,15:103,16:48,17:48,18:63,19:42,20:63,21:42,22:112,23:63,24:42,25:63,26:42,27:63,28:42,29:22,"7a":42,"7b":63,"14a":48,"14b":48,"15a":48,"15b":48,"22a":42,"22b":63};
 const POSTER_GAP_MM=7;
 function heightOf(key){const k=String(key||"");if(POS_HEIGHT_MM[k]!=null)return POS_HEIGHT_MM[k];const b=baseOf(k);return POS_HEIGHT_MM[b]||50;}
+// Šířky polí v mm (pro rozměr v předmětu e-mailu): 1–11 a 18–28 = 100, 12–17 = 139, 29 = 363; poloviční dle základu
+const POS_WIDTH_MM={29:363,"7a":100,"7b":100,"22a":100,"22b":100,"14a":139,"14b":139,"15a":139,"15b":139};
+for(let _i=1;_i<=28;_i++)POS_WIDTH_MM[_i]=(_i>=12&&_i<=17)?139:100;
+// Rozměr "ŠxV" pro standardní pozice; sloučená a nestandardní pole → prázdný (dle rozmery-a-sablony-v2.md se nedopočítává)
+function dimOf(label){const k=String(label||"");if(!k||isMergeLabel(k))return "";const h=POS_HEIGHT_MM[k];if(h==null)return "";const w=POS_WIDTH_MM[k]!=null?POS_WIDTH_MM[k]:POS_WIDTH_MM[baseOf(k)];return w?`${w}x${h}`:"";}
+// E-maily — "zákazník jako hub" (fáze E1). Šablony: rozmery-a-sablony-v2.md
+const GFX_EMAIL="dzob@seznam.cz";
+const EMAIL_SIGN="\n\nMonika Řeháčková / Miroslav Kvaček\nOZ Pro-factor";
+const GFX_TEMPLATES=[
+  {label:"1️⃣ Nový zákazník – podklady",body:"Ahoj Pavle, posílám podklady od nového zákazníka. Prosím o zpracování grafického návrhu. Díky ☺️"},
+  {label:"2️⃣ Stávající – chce změny",body:"Ahoj Pavle, stávající zákazník. Chce provést tyto změny: \nDíky 😉"},
+  {label:"3️⃣ Stávající – podepsaná korektura",body:"Ahoj Pavle, stávající zákazník, posílám podepsanou korekturu ✅"},
+  {label:"4️⃣ Odsouhlaseno → korektura k podpisu",body:"Zdravím Pavle, odsouhlaseno, prosím o korekturu k podpisu 📝\nDíky! ☺️"},
+  {label:"5️⃣ Podepsaná korektura zpět",body:"Ahoj, posílám podepsanou korekturu ✅"}
+];
+const custTemplate=(city,pos)=>`Dobrý den,\n\nzasílám Vám ke kontrole grafický návrh Vaší inzerce v Kulturním měsíčníku (${city}, pozice č. ${pos}).\n\nProsím o potvrzení, zda je vše v pořádku, případně mi napište požadované úpravy.\n\nDěkuji a přeji hezký den,\nMiroslav Kvaček\nPro-Factor`;
+function mailtoUrl(to,subject,body){return "mailto:"+(to||"")+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);}
 // Buduje sekvenci dlaždic pro jeden sloupec/skupinu pozic, s podporou sloučení i rozdělení + proporcionální výška dle mm
 function buildSlotGroups(baseSeq,rows){
   const used=new Set();const groups=[];
@@ -963,7 +1018,23 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
     </div>
     <div style={{marginBottom:11}}><label style={lbl}>Grafika</label><div style={{display:"flex",gap:5,marginTop:4}}>{GFX_ORDER.map(g=>(<button key={g} onClick={()=>setRd(p=>({...p,gfxStatus:g}))} style={{flex:1,padding:"7px 0",borderRadius:8,border:(rd.gfxStatus||"red")===g?`2px solid ${OR}`:"1.5px solid #e5e7eb",background:(rd.gfxStatus||"red")===g?"#fff3e8":"white",fontWeight:(rd.gfxStatus||"red")===g?700:400,fontSize:11,cursor:"pointer",color:"#666"}}>{GFX_META[g].icon} {g==="red"?"Chybí":g==="orange"?"V řešení":"Hotovo"}</button>))}</div></div>
     <div style={{marginBottom:11}}><label style={lbl}>Inzerent</label><textarea style={{...inp,minHeight:80,resize:"vertical"}} value={rd.advertiser} onChange={e=>setRd(p=>({...p,advertiser:e.target.value}))} placeholder={"Název firmy\n+420 123 456 789"}/></div>
-    <div style={{marginBottom:6}}><label style={lbl}>Grafika / Poznámka</label><textarea style={{...inp,minHeight:60,resize:"vertical"}} value={rd.graphic} onChange={e=>setRd(p=>({...p,graphic:e.target.value}))} placeholder="Poznámky, termíny..."/></div>
+    <div style={{marginBottom:11}}><label style={lbl}>Grafika / Poznámka</label><textarea style={{...inp,minHeight:60,resize:"vertical"}} value={rd.graphic} onChange={e=>setRd(p=>({...p,graphic:e.target.value}))} placeholder="Poznámky, termíny..."/></div>
+    {(()=>{
+      const dim=dimOf(rd.label||rd.id);
+      const custName=(rd.advertiser||"").split("/")[0].replace(/_/g," ").trim();
+      const subj=`${cityName||""} č.${rd.label||rd.id}${dim?` (${dim})`:""}${custName?` ${custName}`:""}`.trim();
+      const btnS={width:"100%",textAlign:"left",padding:"8px 10px",borderRadius:8,border:"1.5px solid #bae6fd",background:"white",color:"#0369a1",fontWeight:600,fontSize:11.5,cursor:"pointer"};
+      return(
+      <div style={{marginBottom:6,background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:10,padding:10}}>
+        <label style={{...lbl,color:"#0369a1",marginBottom:3}}>🎨 E-mail grafikovi <span style={{fontWeight:400,fontSize:10.5,color:"#0ea5e9"}}>Pavel · {GFX_EMAIL}</span></label>
+        <div style={{fontSize:10,color:"#7dd3fc",marginBottom:7,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Předmět: {subj}</div>
+        <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
+          {GFX_TEMPLATES.map((t,i)=>(<button key={i} onClick={()=>{window.location.href=mailtoUrl(GFX_EMAIL,subj,t.body+EMAIL_SIGN);}} style={btnS}>{t.label}</button>))}
+        </div>
+        <button onClick={()=>{window.location.href=mailtoUrl("",subj,custTemplate(cityName||"",rd.label||rd.id));}} style={{...btnS,border:"1.5px solid #a7f3d0",color:"#047857"}}>✉️ Zákazníkovi – návrh ke schválení <span style={{fontWeight:400,fontSize:10}}>(adresu doplň v Gmailu)</span></button>
+        <div style={{fontSize:9.5,color:"#93c5fd",marginTop:6}}>Přílohy zatím připoj ručně v Gmailu · Drive odkazy přijdou v další fázi</div>
+      </div>);
+    })()}
   </Modal>);
 })()}
     {eCamp&&<Modal title="Editovat kampaň" onClose={()=>setECamp(false)} onSave={()=>{sv("camp",cd);setECamp(false);}}><div style={{marginBottom:11}}><label style={lbl}>Datum začátku</label><input type="date" style={inp} value={cd.startDate} onChange={e=>setCd(p=>({...p,startDate:e.target.value}))}/></div><div style={{marginBottom:11}}><label style={lbl}>Datum ukončení</label><input type="date" style={inp} value={cd.endDate} onChange={e=>setCd(p=>({...p,endDate:e.target.value}))}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:11}}><div><label style={lbl}>Tržba bez slev <span style={{fontWeight:400,color:"#aaa",fontSize:11}}>(od firmy)</span></label><input type="number" style={inp} value={cd.revenueNoDiscount||""} onChange={e=>setCd(p=>({...p,revenueNoDiscount:e.target.value}))} placeholder="0"/></div><div><label style={lbl}>Minimální tržba</label><input type="number" style={inp} value={cd.minRevenue||""} onChange={e=>setCd(p=>({...p,minRevenue:e.target.value}))} placeholder="0"/></div></div><div style={{marginBottom:11}}><label style={lbl}>Letošní tržba <span style={{fontWeight:400,color:"#aaa",fontSize:11}}>(po uzavření města)</span></label><input type="number" style={inp} value={cd.revenueThisYear||""} onChange={e=>setCd(p=>({...p,revenueThisYear:e.target.value}))} placeholder="0"/></div><div><label style={lbl}>Poznámky</label><textarea style={{...inp,minHeight:70,resize:"vertical"}} value={cd.notes} onChange={e=>setCd(p=>({...p,notes:e.target.value}))} placeholder="Volné poznámky..."/></div></Modal>}
@@ -1163,13 +1234,31 @@ function ZalohaCard({me}){
   return(<div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 8px",fontSize:13,color:DK}}>💾 Záloha dat</h3><div style={{fontSize:12,color:"#999",lineHeight:1.6,marginBottom:12}}>Stáhne kompletní zálohu všech dat (aktuální město, Vizitka, skripty, celý archiv měst) jako jeden soubor JSON. Pojistka proti omylu, chybě i ztrátě zařízení — doporučuji stáhnout před každým uzavřením města.</div>{msg&&<div style={{padding:9,borderRadius:8,background:msg.indexOf("✅")===0?"#f0fdf4":"#fef2f2",color:msg.indexOf("✅")===0?GR:"#dc2626",fontSize:12.5,marginBottom:12}}>{msg}</div>}<button onClick={exportJson} disabled={busy} style={{width:"100%",padding:12,background:GR,color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:14,cursor:busy?"default":"pointer",opacity:busy?0.6:1}}>{busy?"⏳ Připravuji...":"⬇️ Stáhnout zálohu (JSON)"}</button></div>);
 }
 
+function DriveCard(){
+  const [token,setToken]=useState(loadDriveToken);
+  const [msg,setMsg]=useState("");
+  function connect(){setMsg("");requestDriveAccess(t=>{setToken(t);setMsg("✅ Disk připojen. Nahrávání souborů z appky je aktivní (~1 hodinu).");},e=>setMsg("❌ "+e));}
+  function disconnect(){saveDriveToken(null);setToken(null);setMsg("Disk odpojen.");}
+  return(<div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+    <h3 style={{margin:"0 0 8px",fontSize:13,color:DK}}>📀 Google Disk</h3>
+    <div style={{fontSize:12,color:"#999",lineHeight:1.6,marginBottom:12}}>Připojení Disku umožní nahrávat fotky a PDF (korektury, podklady) přímo z appky a vkládat odkazy na ně do e-mailů. Token platí ~1 hodinu, pak se stačí jedním klepnutím připojit znovu.</div>
+    {msg&&<div style={{padding:9,borderRadius:8,background:msg.indexOf("✅")===0?"#f0fdf4":"#fef2f2",color:msg.indexOf("✅")===0?GR:"#dc2626",fontSize:12.5,marginBottom:12}}>{msg}</div>}
+    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+      <div style={{flex:1,fontSize:12.5,fontWeight:700,color:token?GR:"#999"}}>{token?"🟢 Připojeno":"⚪ Nepřipojeno"}</div>
+      {token
+        ?<button onClick={disconnect} style={{background:"#f9f9f9",border:"1.5px solid #e5e7eb",color:"#666",padding:"9px 14px",borderRadius:10,fontWeight:700,fontSize:13,cursor:"pointer"}}>Odpojit</button>
+        :<button onClick={connect} style={{background:GR,color:"white",border:"none",padding:"10px 16px",borderRadius:10,fontWeight:700,fontSize:13,cursor:"pointer"}}>🔗 Připojit Disk</button>}
+    </div>
+  </div>);
+}
+
 function Nastaveni({me,city,camp,rows,closeCity}){
-  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Nastavení</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",gap:11}}><div style={{width:44,height:44,background:OR,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:19}}>{me.name[0]}</div><div><div style={{fontWeight:800,fontSize:15,color:DK}}>{me.name}</div><div style={{color:"#ccc",fontSize:11}}>{AUTH.email||"Obchodní zástupce · Pro-Factor"}</div></div></div></div><PwdCard/><ZalohaCard me={me}/><CloseCitySection city={city} camp={camp} rows={rows} closeCity={closeCity}/></div>);
+  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Nastavení</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",gap:11}}><div style={{width:44,height:44,background:OR,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:19}}>{me.name[0]}</div><div><div style={{fontWeight:800,fontSize:15,color:DK}}>{me.name}</div><div style={{color:"#ccc",fontSize:11}}>{AUTH.email||"Obchodní zástupce · Pro-Factor"}</div></div></div></div><PwdCard/><ZalohaCard me={me}/><DriveCard/><CloseCitySection city={city} camp={camp} rows={rows} closeCity={closeCity}/></div>);
 }
 
 // ── ADMIN ─────────────────────────────────────────────────────
 function Admin({me,users,upUsers,city,camp,rows,closeCity}){
-  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Admin panel</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>🔐 Přístup do appky</h3><div style={{background:"#f9f9f9",borderRadius:10,padding:11,fontSize:12,color:"#666",lineHeight:1.7}}>Přihlášení běží přes <strong>Firebase Authentication</strong> (e-mail + heslo). Nové účty se zakládají ručně ve <strong>Firebase Console → Authentication → Users</strong>. Žádný přístupový kód, žádná veřejná registrace.<br/>Přihlášený účet: <strong>{AUTH.email||"—"}</strong></div></div><PwdCard/><ZalohaCard me={me}/><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>👥 Profily ({users.length})</h3>{users.length===0&&<div style={{color:"#ccc",textAlign:"center",padding:"18px 0",fontSize:13}}>Žádné profily.</div>}{users.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 0",borderBottom:"1px solid #f8f8f8"}}><div style={{width:32,height:32,background:OR,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:14}}>{(u.name||"?")[0]}</div><div style={{flex:1}}><div style={{fontWeight:600,color:DK,fontSize:13}}>{u.name}</div><div style={{fontSize:10,color:"#ccc"}}>{u.createdAt?new Date(u.createdAt).toLocaleDateString("cs"):"—"}</div></div><button onClick={async()=>{if(window.confirm("Smazat profil "+u.name+"? Data zůstanou v databázi."))await upUsers(users.filter(x=>x.id!==u.id));}} style={{background:"#fef2f2",border:"none",color:"#dc2626",padding:"5px 8px",borderRadius:7,fontSize:12,cursor:"pointer"}}>🗑️</button></div>))}</div><CloseCitySection city={city} camp={camp} rows={rows} closeCity={closeCity}/></div>);
+  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Admin panel</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>🔐 Přístup do appky</h3><div style={{background:"#f9f9f9",borderRadius:10,padding:11,fontSize:12,color:"#666",lineHeight:1.7}}>Přihlášení běží přes <strong>Firebase Authentication</strong> (e-mail + heslo). Nové účty se zakládají ručně ve <strong>Firebase Console → Authentication → Users</strong>. Žádný přístupový kód, žádná veřejná registrace.<br/>Přihlášený účet: <strong>{AUTH.email||"—"}</strong></div></div><PwdCard/><ZalohaCard me={me}/><DriveCard/><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>👥 Profily ({users.length})</h3>{users.length===0&&<div style={{color:"#ccc",textAlign:"center",padding:"18px 0",fontSize:13}}>Žádné profily.</div>}{users.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 0",borderBottom:"1px solid #f8f8f8"}}><div style={{width:32,height:32,background:OR,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:14}}>{(u.name||"?")[0]}</div><div style={{flex:1}}><div style={{fontWeight:600,color:DK,fontSize:13}}>{u.name}</div><div style={{fontSize:10,color:"#ccc"}}>{u.createdAt?new Date(u.createdAt).toLocaleDateString("cs"):"—"}</div></div><button onClick={async()=>{if(window.confirm("Smazat profil "+u.name+"? Data zůstanou v databázi."))await upUsers(users.filter(x=>x.id!==u.id));}} style={{background:"#fef2f2",border:"none",color:"#dc2626",padding:"5px 8px",borderRadius:7,fontSize:12,cursor:"pointer"}}>🗑️</button></div>))}</div><CloseCitySection city={city} camp={camp} rows={rows} closeCity={closeCity}/></div>);
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
