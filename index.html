@@ -711,6 +711,10 @@ const GFX_TEMPLATES=[
 ];
 const custTemplate=(city,pos)=>`Dobrý den,\n\nzasílám Vám ke kontrole grafický návrh Vaší inzerce v Kulturním měsíčníku (${city}, pozice č. ${pos}).\n\nProsím o potvrzení, zda je vše v pořádku, případně mi napište požadované úpravy.\n\nDěkuji a přeji hezký den,\nMiroslav Kvaček\nPro-Factor`;
 function mailtoUrl(to,subject,body){return "mailto:"+(to||"")+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);}
+// Čištění textů pro předmět e-mailu: emoji v appce zůstávají (zvýraznění), do e-mailu nepatří.
+// cutAtEmoji=true → text se uřízne od prvního emoji (název města s markerem „🎴 M&M" → jen město)
+const EMOJI_RE=/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu;
+function subjClean(s,cutAtEmoji){s=String(s||"");if(cutAtEmoji){const m=s.match(/\p{Extended_Pictographic}/u);if(m&&m.index>0)s=s.slice(0,m.index);}return s.replace(EMOJI_RE,"").replace(/\s+/g," ").trim();}
 // Buduje sekvenci dlaždic pro jeden sloupec/skupinu pozic, s podporou sloučení i rozdělení + proporcionální výška dle mm
 function buildSlotGroups(baseSeq,rows){
   const used=new Set();const groups=[];
@@ -1023,8 +1027,8 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
     <div style={{marginBottom:11}}><label style={lbl}>Grafika / Poznámka</label><textarea style={{...inp,minHeight:60,resize:"vertical"}} value={rd.graphic} onChange={e=>setRd(p=>({...p,graphic:e.target.value}))} placeholder="Poznámky, termíny..."/></div>
     {(()=>{
       const dim=dimOf(rd.label||rd.id);
-      const custName=(rd.advertiser||"").split("/")[0].replace(/_/g," ").replace(/^[^\p{L}\p{N}]+/u,"").trim();
-      const subj=`${cityName||""} č. ${rd.label||rd.id}${dim?` (${dim})`:""}${custName?` ${custName}`:""}`.trim();
+      const custName=subjClean((rd.advertiser||"").split("/")[0].replace(/_/g," "),false);
+      const subj=`${subjClean(cityName,true)} č. ${rd.label||rd.id}${dim?` (${dim})`:""}${custName?` ${custName}`:""}`.trim();
       const btnS={width:"100%",textAlign:"left",padding:"8px 10px",borderRadius:8,border:"1.5px solid #bae6fd",background:"white",color:"#0369a1",fontWeight:600,fontSize:11.5,cursor:"pointer"};
       return(
       <div style={{marginBottom:6,background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:10,padding:10}}>
