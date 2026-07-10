@@ -643,7 +643,7 @@ function baseOf(label){const m=String(label||"").match(/^(\d+)/);return m?m[1]:S
 function isMergeLabel(label){return String(label||"").includes("+");}
 function mergeBases(label){return [...new Set(String(label||"").match(/\d+/g)||[])];}
 // Skutečná výška pole v mm (z tabulky rozmery-poli-a-sablony-emailu.md) - určuje proporcionální výšku dlaždice v levém/pravém sloupci
-const POS_HEIGHT_MM={1:42,2:63,3:42,4:63,5:42,6:63,7:112,8:42,9:63,10:42,11:63,18:63,19:42,20:63,21:42,22:112,23:63,24:42,25:63,26:42,27:63,28:42,29:22};
+const POS_HEIGHT_MM={1:42,2:63,3:42,4:63,5:42,6:63,7:112,8:42,9:63,10:42,11:63,12:48,13:48,14:103,15:103,16:48,17:48,18:63,19:42,20:63,21:42,22:112,23:63,24:42,25:63,26:42,27:63,28:42,29:22};
 function heightOf(base){return POS_HEIGHT_MM[base]||50;}
 // Buduje sekvenci dlaždic pro jeden sloupec/skupinu pozic, s podporou sloučení i rozdělení + proporcionální výška dle mm
 function buildSlotGroups(baseSeq,rows){
