@@ -642,20 +642,22 @@ function effLabel(r){return r.label||String(r.id||"");}
 function baseOf(label){const m=String(label||"").match(/^(\d+)/);return m?m[1]:String(label||"");}
 function isMergeLabel(label){return String(label||"").includes("+");}
 function mergeBases(label){return [...new Set(String(label||"").match(/\d+/g)||[])];}
-// Skutečná výška pole v mm (z tabulky rozmery-poli-a-sablony-emailu.md) - určuje proporcionální výšku dlaždice v levém/pravém sloupci
-const POS_HEIGHT_MM={1:42,2:63,3:42,4:63,5:42,6:63,7:112,8:42,9:63,10:42,11:63,12:48,13:48,14:103,15:103,16:48,17:48,18:63,19:42,20:63,21:42,22:112,23:63,24:42,25:63,26:42,27:63,28:42,29:22};
-function heightOf(base){return POS_HEIGHT_MM[base]||50;}
+// Skutečná výška pole v mm (z tabulky rozmery-poli-a-sablony-emailu.md + upřesnění 10.7.2026) - určuje proporcionální výšku dlaždice
+// Poloviční pole: 14a/b, 15a/b = 139x48 (jako 12/13/16/17); 7a/22a = 100x42, 7b/22b = 100x63. Mezera mezi poli na plakátu = 7 mm.
+const POS_HEIGHT_MM={1:42,2:63,3:42,4:63,5:42,6:63,7:112,8:42,9:63,10:42,11:63,12:48,13:48,14:103,15:103,16:48,17:48,18:63,19:42,20:63,21:42,22:112,23:63,24:42,25:63,26:42,27:63,28:42,29:22,"7a":42,"7b":63,"14a":48,"14b":48,"15a":48,"15b":48,"22a":42,"22b":63};
+const POSTER_GAP_MM=7;
+function heightOf(key){const k=String(key||"");if(POS_HEIGHT_MM[k]!=null)return POS_HEIGHT_MM[k];const b=baseOf(k);return POS_HEIGHT_MM[b]||50;}
 // Buduje sekvenci dlaždic pro jeden sloupec/skupinu pozic, s podporou sloučení i rozdělení + proporcionální výška dle mm
 function buildSlotGroups(baseSeq,rows){
   const used=new Set();const groups=[];
   for(let i=0;i<baseSeq.length;i++){
     const b=baseSeq[i];
     if(used.has(b))continue;
-    const mergeRow=rows.find(r=>isMergeLabel(effLabel(r))&&mergeBases(effLabel(r))[0]===b&&mergeBases(effLabel(r)).every(x=>baseSeq.includes(x)));
+    const mergeRow=rows.find(r=>isMergeLabel(effLabel(r))&&mergeBases(effLabel(r)).includes(b)&&mergeBases(effLabel(r)).every(x=>baseSeq.includes(x)));
     if(mergeRow){
       const claimed=mergeBases(effLabel(mergeRow));
       claimed.forEach(x=>used.add(x));
-      const weight=claimed.reduce((s,x)=>s+heightOf(x),0);
+      const weight=claimed.reduce((s,x)=>s+heightOf(x),0)+POSTER_GAP_MM*(claimed.length-1);
       groups.push({type:"merge",row:mergeRow,weight});
       continue;
     }
@@ -678,7 +680,7 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
     const words=r?(r.advertiser||"").trim():"";
     const w=weight||50;
     if(horiz){return(
-      <div onClick={()=>r&&onEdit(r.rowId)} style={{background:bg,border:bord,borderRadius:3,padding:"3px 6px",cursor:r?"pointer":"default",display:"flex",alignItems:"center",gap:4,minHeight:18}}>
+      <div onClick={()=>r&&onEdit(r.rowId)} style={{background:bg,border:bord,borderRadius:3,padding:"3px 6px",cursor:r?"pointer":"default",display:"flex",alignItems:"center",gap:4,minHeight:18,flex:1}}>
         <span style={{fontSize:9,color:DK,fontWeight:800,flexShrink:0}}>{lbl}</span>
         {words&&<span style={{fontSize:9,color:col,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{words}</span>}
         {r&&<span onClick={e=>{e.stopPropagation();onToggle(r.rowId);}} style={{fontSize:10,cursor:"pointer",flexShrink:0}}>{GFX_META[r.gfxStatus||"red"].icon}</span>}
@@ -696,7 +698,7 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
     const out=[];
     groups.forEach((g,gi)=>{
       if(g.type==="merge"){out.push(<Tile key={keyPrefix+gi} row={g.row} weight={g.weight}/>);}
-      else{const perRow=g.weight/g.rows.length;g.rows.forEach((r,ri)=>out.push(<Tile key={keyPrefix+gi+"_"+ri} row={r} posLabel={r?null:g.base} weight={perRow}/>));}
+      else{g.rows.forEach((r,ri)=>{const w=r?heightOf(effLabel(r)):g.weight/g.rows.length;out.push(<Tile key={keyPrefix+gi+"_"+ri} row={r} posLabel={r?null:g.base} weight={w}/>);});}
     });
     return out;
   }
@@ -711,7 +713,9 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
   }
   const LEFT_BASES=['1','2','3','4','5','6','7','8','9','10','11'];
   const RIGHT_BASES=['28','27','26','25','24','23','22','21','20','19','18'];
-  const BTM_GROUPS=[['12','13'],['14'],['15'],['16','17']];
+  const BTM_GROUPS=[['12','13'],['14'],['15'],['17','16']]; // 17 nad 16 — dle fyzického plakátu
+  // Výška spodního sloupce = 103 mm (48+7+48 = 103 = pole 14/15), šířka pole 139 mm → poměr stran drží fyzické proporce nezávisle na délce textu
+  const BTM_COL_AR="139/103";
   const leftGroups=buildSlotGroups(LEFT_BASES,rows);
   const rightGroups=buildSlotGroups(RIGHT_BASES,rows);
   const btmColGroups=BTM_GROUPS.map(g=>buildSlotGroups(g,rows));
@@ -735,15 +739,15 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
             </label>
             {posterImg&&<button onClick={()=>onSavePosterImg(null)} style={{position:"absolute",top:3,right:3,background:"rgba(0,0,0,0.45)",border:"none",color:"white",borderRadius:4,padding:"1px 5px",fontSize:10,cursor:"pointer",lineHeight:1.4}}>✕</button>}
           </div>
-          <div className="strip29-tablet"><Tile row={rows.find(r=>!isMergeLabel(effLabel(r))&&baseOf(effLabel(r))==="29")} posLabel="29" horiz={true}/></div>
+          <div className="strip29-tablet" style={{aspectRatio:"363/22",minHeight:20,display:"flex",flexDirection:"column"}}><Tile row={rows.find(r=>!isMergeLabel(effLabel(r))&&baseOf(effLabel(r))==="29")} posLabel="29" horiz={true}/></div>
         </div>
         <div className="poster-side-col">
           {renderGroups(rightGroups,"R")}
         </div>
       </div>
-      <div className="strip29-phone"><Tile row={rows.find(r=>!isMergeLabel(effLabel(r))&&baseOf(effLabel(r))==="29")} posLabel="29" horiz={true}/></div>
+      <div className="strip29-phone" style={{aspectRatio:"363/22",minHeight:20,display:"flex",flexDirection:"column"}}><Tile row={rows.find(r=>!isMergeLabel(effLabel(r))&&baseOf(effLabel(r))==="29")} posLabel="29" horiz={true}/></div>
       <div className="poster-btm-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2}}>
-        {btmColGroups.map((groups,ci)=>(<div key={ci} style={{display:"flex",flexDirection:"column",gap:2}}>{renderGroups(groups,"B"+ci)}</div>))}
+        {btmColGroups.map((groups,ci)=>(<div key={ci} style={{display:"flex",flexDirection:"column",gap:2,aspectRatio:BTM_COL_AR,minHeight:0}}>{renderGroups(groups,"B"+ci)}</div>))}
       </div>
     </div>
   );
