@@ -356,10 +356,10 @@ function App(){
 function Auth({onLogin}){
   const [email,setEmail]=useState("");const [pw,setPw]=useState("");
   const [err,setErr]=useState("");const [show,setShow]=useState(false);const [busy,setBusy]=useState(false);
-  const ERRMAP={EMAIL_NOT_FOUND:"\u00da\u010det s t\u00edmto e-mailem neexistuje.",INVALID_PASSWORD:"Nespr\u00e1vn\u00e9 heslo.",INVALID_LOGIN_CREDENTIALS:"Nespr\u00e1vn\u00fd e-mail nebo heslo.",USER_DISABLED:"\u00da\u010det je zablokovan\u00fd.",TOO_MANY_ATTEMPTS_TRY_LATER:"P\u0159\u00edli\u0161 mnoho pokus\u016f. Chv\u00edli po\u010dkej a zkus to znovu."};
+  const ERRMAP={EMAIL_NOT_FOUND:"Účet s tímto e-mailem neexistuje.",INVALID_PASSWORD:"Nesprávné heslo.",INVALID_LOGIN_CREDENTIALS:"Nesprávný e-mail nebo heslo.",USER_DISABLED:"Účet je zablokovaný.",TOO_MANY_ATTEMPTS_TRY_LATER:"Příliš mnoho pokusů. Chvíli počkej a zkus to znovu."};
   async function doLogin(){
     setErr("");
-    if(!email.trim()||!pw){setErr("Vypl\u0148 e-mail a heslo.");return;}
+    if(!email.trim()||!pw){setErr("Vyplň e-mail a heslo.");return;}
     setBusy(true);
     try{
       await fbSignIn(email.trim(),pw);
@@ -367,11 +367,11 @@ function Auth({onLogin}){
     }catch(e){
       const m=String(e.message||"");
       const k=Object.keys(ERRMAP).find(x=>m.indexOf(x)>=0);
-      setErr(k?ERRMAP[k]:"P\u0159ihl\u00e1\u0161en\u00ed selhalo. Zkontroluj p\u0159ipojen\u00ed a zkus znovu.");
+      setErr(k?ERRMAP[k]:"Přihlášení selhalo. Zkontroluj připojení a zkus znovu.");
       setBusy(false);
     }
   }
-  return(<div style={{minHeight:"100vh",background:`linear-gradient(160deg,${DK} 0%,#2a1200 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}><div style={{width:"100%",maxWidth:400}}><div style={{textAlign:"center",marginBottom:22}}><img src={LOGO} alt="PF" style={{width:80,height:80,objectFit:"contain",display:"block",margin:"0 auto 10px"}}/><div style={{color:"rgba(255,255,255,0.5)",fontSize:12}}>Prodejn\u00ed Tah\u00e1k \u00b7 Kulturn\u00ed plak\u00e1ty</div></div><div style={{background:"white",borderRadius:20,padding:22,boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}><div style={{fontWeight:800,fontSize:16,color:DK,marginBottom:16,textAlign:"center"}}>P\u0159ihl\u00e1\u0161en\u00ed</div>{err&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",color:"#dc2626",borderRadius:8,padding:"9px 13px",marginBottom:13,fontSize:13}}>\u26a0\ufe0f {err}</div>}<div style={{marginBottom:12}}><label style={lbl}>E-mail</label><input style={inp} type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()} placeholder="ucet@gmail.com"/></div><div style={{marginBottom:20}}><label style={lbl}>Heslo</label><div style={{position:"relative"}}><input style={{...inp,paddingRight:42}} type={show?"text":"password"} autoComplete="current-password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()} placeholder="\u2022\u2022\u2022\u2022\u2022\u2022"/><button onClick={()=>setShow(x=>!x)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16}}>{show?"\ud83d\ude48":"\ud83d\udc41\ufe0f"}</button></div></div><button onClick={doLogin} disabled={busy} style={{width:"100%",padding:14,background:OR,color:"white",border:"none",borderRadius:12,fontWeight:700,fontSize:16,cursor:busy?"default":"pointer",opacity:busy?0.6:1}}>{busy?"\u23f3 P\u0159ihla\u0161uji...":"P\u0159ihl\u00e1sit se \u2192"}</button><div style={{fontSize:11,color:"#bbb",marginTop:12,lineHeight:1.5,textAlign:"center"}}>\u00da\u010dty se zakl\u00e1daj\u00ed ve Firebase Console.<br/>P\u0159\u00edstup jen pro M&M.</div></div><div style={{textAlign:"center",color:"rgba(255,255,255,0.25)",fontSize:11,marginTop:12}}>Pro-Factor s.r.o. | kulturavemeste.cz</div></div></div>);
+  return(<div style={{minHeight:"100vh",background:`linear-gradient(160deg,${DK} 0%,#2a1200 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}><div style={{width:"100%",maxWidth:400}}><div style={{textAlign:"center",marginBottom:22}}><img src={LOGO} alt="PF" style={{width:80,height:80,objectFit:"contain",display:"block",margin:"0 auto 10px"}}/><div style={{color:"rgba(255,255,255,0.5)",fontSize:12}}>Prodejní Tahák · Kulturní plakáty</div></div><div style={{background:"white",borderRadius:20,padding:22,boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}><div style={{fontWeight:800,fontSize:16,color:DK,marginBottom:16,textAlign:"center"}}>Přihlášení</div>{err&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",color:"#dc2626",borderRadius:8,padding:"9px 13px",marginBottom:13,fontSize:13}}>⚠️ {err}</div>}<div style={{marginBottom:12}}><label style={lbl}>E-mail</label><input style={inp} type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()} placeholder="ucet@gmail.com"/></div><div style={{marginBottom:20}}><label style={lbl}>Heslo</label><div style={{position:"relative"}}><input style={{...inp,paddingRight:42}} type={show?"text":"password"} autoComplete="current-password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()} placeholder="••••••"/><button onClick={()=>setShow(x=>!x)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16}}>{show?"🙈":"👁️"}</button></div></div><button onClick={doLogin} disabled={busy} style={{width:"100%",padding:14,background:OR,color:"white",border:"none",borderRadius:12,fontWeight:700,fontSize:16,cursor:busy?"default":"pointer",opacity:busy?0.6:1}}>{busy?"⏳ Přihlašuji...":"Přihlásit se →"}</button><div style={{fontSize:11,color:"#bbb",marginTop:12,lineHeight:1.5,textAlign:"center"}}>Účty se zakládají ve Firebase Console.<br/>Přístup jen pro M&M.</div></div><div style={{textAlign:"center",color:"rgba(255,255,255,0.25)",fontSize:11,marginTop:12}}>Pro-Factor s.r.o. | kulturavemeste.cz</div></div></div>);
 }
 
 // ── PROPOJENÍ DAT (jednorázově po prvním přihlášení) ──────────
@@ -383,23 +383,23 @@ function LinkProfile({onDone,onLogout}){
   useEffect(()=>{restGetCol("pf_users").then(us=>setList(us||[]));},[]);
   async function finish(profile){
     const ok=await restSetDoc("pf_profiles/"+AUTH.localId,profile);
-    if(!ok){setErr("Ulo\u017een\u00ed profilu selhalo. Zkus to znovu.");setBusy(false);return;}
+    if(!ok){setErr("Uložení profilu selhalo. Zkus to znovu.");setBusy(false);return;}
     onDone(profile);
   }
   async function pick(u){
     setBusy(true);setErr("");
-    // Odstranit plaintext heslo z pf_users (p\u0159epis dokumentu bez pole password)
+    // Odstranit plaintext heslo z pf_users (přepis dokumentu bez pole password)
     const clean={id:u.id,name:u.name,role:u.role||"user",createdAt:u.createdAt||""};
     await restSetDoc("pf_users/"+u.id,clean);
     await finish({dataUid:u.id,name:u.name,role:"admin",linkedAt:new Date().toISOString()});
   }
   async function createNew(){
-    if(!name.trim()){setErr("Zadej jm\u00e9no.");return;}
+    if(!name.trim()){setErr("Zadej jméno.");return;}
     setBusy(true);setErr("");
     await restSetDoc("pf_users/"+AUTH.localId,{id:AUTH.localId,name:name.trim(),role:"user",createdAt:new Date().toISOString()});
     await finish({dataUid:AUTH.localId,name:name.trim(),role:"admin",linkedAt:new Date().toISOString()});
   }
-  return(<div style={{minHeight:"100vh",background:`linear-gradient(160deg,${DK} 0%,#2a1200 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}><div style={{width:"100%",maxWidth:420}}><div style={{textAlign:"center",marginBottom:18}}><img src={LOGO} alt="PF" style={{width:64,height:64,objectFit:"contain",display:"block",margin:"0 auto 8px"}}/><div style={{color:"rgba(255,255,255,0.5)",fontSize:12}}>{AUTH.email}</div></div><div style={{background:"white",borderRadius:20,padding:22,boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}><div style={{fontWeight:800,fontSize:16,color:DK,marginBottom:6}}>\ud83d\udd17 Propojen\u00ed dat</div><div style={{fontSize:12.5,color:"#888",lineHeight:1.6,marginBottom:14}}>Prvn\u00ed p\u0159ihl\u00e1\u0161en\u00ed t\u00edmto \u00fa\u010dtem. Vyber existuj\u00edc\u00ed profil, jeho\u017e data (m\u011bsto, Vizitka, skripty) chce\u0161 pou\u017e\u00edvat \u2014 provede se jen jednou.</div>{err&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",color:"#dc2626",borderRadius:8,padding:"9px 13px",marginBottom:13,fontSize:13}}>\u26a0\ufe0f {err}</div>}{!list?<div style={{textAlign:"center",color:"#ccc",padding:16,fontSize:13}}>\u23f3 Na\u010d\u00edt\u00e1m profily...</div>:(<>{list.map(u=>(<button key={u.id} disabled={busy} onClick={()=>pick(u)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 13px",marginBottom:8,background:"#fff8f0",border:`1.5px solid ${OR}55`,borderRadius:11,cursor:busy?"default":"pointer",textAlign:"left",opacity:busy?0.6:1}}><div style={{width:34,height:34,background:OR,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:15,flexShrink:0}}>{(u.name||"?")[0]}</div><div><div style={{fontWeight:700,fontSize:14,color:DK}}>{u.name}</div><div style={{fontSize:10.5,color:"#bbb"}}>propojit s daty tohoto profilu</div></div></button>))}{list.length===0&&<div style={{fontSize:12,color:"#bbb",marginBottom:10,textAlign:"center"}}>\u017d\u00e1dn\u00e9 existuj\u00edc\u00ed profily.</div>}<div style={{borderTop:"1px solid #f0f0f0",marginTop:6,paddingTop:12}}><label style={lbl}>...nebo za\u010d\u00edt s pr\u00e1zdn\u00fdmi daty</label><div style={{display:"flex",gap:8}}><input style={{...inp,flex:1}} value={name} onChange={e=>setName(e.target.value)} placeholder="Jm\u00e9no (nap\u0159. Myrda67)"/><button disabled={busy} onClick={createNew} style={{padding:"0 16px",background:GR,color:"white",border:"none",borderRadius:10,fontWeight:700,fontSize:13,cursor:busy?"default":"pointer",opacity:busy?0.6:1}}>Vytvo\u0159it</button></div></div></>)}<button onClick={onLogout} style={{width:"100%",marginTop:14,padding:9,background:"#f5f5f5",border:"none",borderRadius:9,fontWeight:600,fontSize:12,cursor:"pointer",color:"#888"}}>Odhl\u00e1sit se</button></div></div></div>);
+  return(<div style={{minHeight:"100vh",background:`linear-gradient(160deg,${DK} 0%,#2a1200 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}><div style={{width:"100%",maxWidth:420}}><div style={{textAlign:"center",marginBottom:18}}><img src={LOGO} alt="PF" style={{width:64,height:64,objectFit:"contain",display:"block",margin:"0 auto 8px"}}/><div style={{color:"rgba(255,255,255,0.5)",fontSize:12}}>{AUTH.email}</div></div><div style={{background:"white",borderRadius:20,padding:22,boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}><div style={{fontWeight:800,fontSize:16,color:DK,marginBottom:6}}>🔗 Propojení dat</div><div style={{fontSize:12.5,color:"#888",lineHeight:1.6,marginBottom:14}}>První přihlášení tímto účtem. Vyber existující profil, jehož data (město, Vizitka, skripty) chceš používat — provede se jen jednou.</div>{err&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",color:"#dc2626",borderRadius:8,padding:"9px 13px",marginBottom:13,fontSize:13}}>⚠️ {err}</div>}{!list?<div style={{textAlign:"center",color:"#ccc",padding:16,fontSize:13}}>⏳ Načítám profily...</div>:(<>{list.map(u=>(<button key={u.id} disabled={busy} onClick={()=>pick(u)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 13px",marginBottom:8,background:"#fff8f0",border:`1.5px solid ${OR}55`,borderRadius:11,cursor:busy?"default":"pointer",textAlign:"left",opacity:busy?0.6:1}}><div style={{width:34,height:34,background:OR,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:15,flexShrink:0}}>{(u.name||"?")[0]}</div><div><div style={{fontWeight:700,fontSize:14,color:DK}}>{u.name}</div><div style={{fontSize:10.5,color:"#bbb"}}>propojit s daty tohoto profilu</div></div></button>))}{list.length===0&&<div style={{fontSize:12,color:"#bbb",marginBottom:10,textAlign:"center"}}>Žádné existující profily.</div>}<div style={{borderTop:"1px solid #f0f0f0",marginTop:6,paddingTop:12}}><label style={lbl}>...nebo začít s prázdnými daty</label><div style={{display:"flex",gap:8}}><input style={{...inp,flex:1}} value={name} onChange={e=>setName(e.target.value)} placeholder="Jméno (např. Myrda67)"/><button disabled={busy} onClick={createNew} style={{padding:"0 16px",background:GR,color:"white",border:"none",borderRadius:10,fontWeight:700,fontSize:13,cursor:busy?"default":"pointer",opacity:busy?0.6:1}}>Vytvořit</button></div></div></>)}<button onClick={onLogout} style={{width:"100%",marginTop:14,padding:9,background:"#f5f5f5",border:"none",borderRadius:9,fontWeight:600,fontSize:12,cursor:"pointer",color:"#888"}}>Odhlásit se</button></div></div></div>);
 }
 
 // ── SHELL ─────────────────────────────────────────────────────
@@ -470,7 +470,7 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
 
   async function closeCity(){
     if(!city||!rows||!camp)return{ok:false,msg:"Data ještě nejsou načtená."};
-    if(!window.confirm("Opravdu uzavřít město "+(city.name||"")+"? Tato akce je nevratná."))return{ok:false,msg:"Zrušeno."};
+    if(!window.confirm("Opravdu uzavřít město "+(city.name||"")+"?\n\n💡 Doporučení: nejdřív si vygeneruj 📄 tiskový souhrn (Vizitka).\n\nKompletní data všech polí (zákazníci, ceny, kontakty) se uloží do archivu, poté se město resetuje. Tato akce je nevratná."))return{ok:false,msg:"Zrušeno."};
     const wd=countWorkDays(camp.startDate,camp.endDate);
     let dc=0;if(camp.startDate&&camp.endDate)dc=Math.max(0,Math.round((new Date(camp.endDate)-new Date(camp.startDate))/86400000));
     const totalRevC=rows.reduce((s,r)=>s+(parseFloat(r.price)||0),0);
@@ -483,7 +483,8 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
     const revFc=rows.reduce((s,r)=>s+(r.signedBy==="F"?(parseFloat(r.price)||0):0),0);
     const revMc=rows.reduce((s,r)=>s+(r.signedBy==="M"?(parseFloat(r.price)||0):0),0);
     const cityId="c"+Date.now();
-    const record={id:cityId,mesto:city.name||"",edice:camp.endDate?new Date(camp.endDate).getFullYear():new Date().getFullYear(),datumOd:camp.startDate||"",datumDo:camp.endDate||"",dniCelkem:dc,pracovnichDni:wd,procentoMarze:camp.marginPct||0,celkemPoli:rows.length,nove:nNc,stavajiciZ:nSZc,jine:nJc,trzba:totalRevC,navyseni:totalNavC,marze:marginC,trzbaMonika:revFc,trzbaMyrda:revMc,closedAt:Date.now(),historic:false};
+    const kCntC=rows.filter(r=>r.type==="K").length;
+    const record={id:cityId,mesto:city.name||"",edice:camp.endDate?new Date(camp.endDate).getFullYear():new Date().getFullYear(),datumOd:camp.startDate||"",datumDo:camp.endDate||"",dniCelkem:dc,pracovnichDni:wd,procentoMarze:camp.marginPct||0,celkemPoli:rows.length,nove:nNc,stavajiciZ:nSZc,jine:nJc,kontrolky:kCntC,barterBonus:totalKBonusC,trzba:totalRevC,navyseni:totalNavC,marze:marginC,trzbaMonika:revFc,trzbaMyrda:revMc,closedAt:Date.now(),historic:false,ownerUid:uid,rowsSnapshot:rows.map(r=>({...r}))};
     const ok1=await restSetDoc("pf_cities_history/"+cityId,record);
     if(!ok1)return{ok:false,msg:"Uložení do archivu selhalo. Zkus to znovu."};
     const newCity={name:"Vaše město",emoji:"🏙️"};
@@ -927,7 +928,7 @@ function Shrnuti({uid}){
       trzba:parseFloat(fd.trzba)||0,navyseni:parseFloat(fd.navyseni)||0,marze:parseFloat(fd.marze)||0,
       trzbaMonika:parseFloat(fd.trzbaMonika)||0,trzbaMyrda:parseFloat(fd.trzbaMyrda)||0,
       procentoMarze:parseFloat(fd.procentoMarze)||0,edice:parseInt(fd.edice)||new Date().getFullYear(),
-      closedAt:fd.closedAt||Date.now()};
+      closedAt:fd.closedAt||Date.now(),ownerUid:fd.ownerUid||uid};
     await restSetDoc("pf_cities_history/"+id,record);
     setBusy(false);setShowForm(false);load();
   }
@@ -1053,31 +1054,57 @@ function CloseCitySection({city,camp,rows,closeCity}){
 }
 
 // ── NASTAVENÍ ─────────────────────────────────────────────────
-function Nastaveni({me,city,camp,rows,closeCity}){
+// ── SDÍLENÉ KARTY (Nastavení + Admin) ─────────────────────────
+function PwdCard(){
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");const [msg,setMsg]=useState("");const [busy,setBusy]=useState(false);
   async function changePw(){
     setMsg("");
-    if(np.length<6){setMsg("\u274c Heslo mus\u00ed m\u00edt alespo\u0148 6 znak\u016f (po\u017eadavek Firebase).");return;}
-    if(np!==cp){setMsg("\u274c Hesla se neshoduj\u00ed.");return;}
+    if(np.length<6){setMsg("❌ Heslo musí mít alespoň 6 znaků (požadavek Firebase).");return;}
+    if(np!==cp){setMsg("❌ Hesla se neshodují.");return;}
     setBusy(true);
     try{
-      await fbSignIn(AUTH.email,op); // ov\u011b\u0159en\u00ed star\u00e9ho hesla
+      await fbSignIn(AUTH.email,op);
       await fbChangePassword(np);
-      setMsg("\u2705 Heslo zm\u011bn\u011bno. Plat\u00ed pro sd\u00edlen\u00fd \u00fa\u010det \u2014 \u0159ekni to i Monice \ud83d\ude09");
+      setMsg("✅ Heslo změněno. Platí pro sdílený účet — řekni to i Monice 😉");
       setOp("");setNp("");setCp("");
     }catch(e){
       const m=String(e.message||"");
-      if(m.indexOf("INVALID_PASSWORD")>=0||m.indexOf("INVALID_LOGIN_CREDENTIALS")>=0)setMsg("\u274c Star\u00e9 heslo nen\u00ed spr\u00e1vn\u00e9.");
-      else setMsg("\u274c Zm\u011bna hesla selhala. Zkus to znovu.");
+      if(m.indexOf("INVALID_PASSWORD")>=0||m.indexOf("INVALID_LOGIN_CREDENTIALS")>=0)setMsg("❌ Staré heslo není správné.");
+      else setMsg("❌ Změna hesla selhala. Zkus to znovu.");
     }
     setBusy(false);
   }
-  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>\u2699\ufe0f Nastaven\u00ed</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",gap:11,marginBottom:16,paddingBottom:14,borderBottom:"1px solid #f5f5f5"}}><div style={{width:44,height:44,background:OR,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:19}}>{me.name[0]}</div><div><div style={{fontWeight:800,fontSize:15,color:DK}}>{me.name}</div><div style={{color:"#ccc",fontSize:11}}>{AUTH.email||"Obchodn\u00ed z\u00e1stupce \u00b7 Pro-Factor"}</div></div></div><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>\ud83d\udd11 Zm\u011bnit heslo <span style={{fontWeight:400,color:"#bbb",fontSize:11}}>(sd\u00edlen\u00fd \u00fa\u010det)</span></h3>{msg&&<div style={{padding:9,borderRadius:8,background:msg.indexOf("\u2705")===0?"#f0fdf4":"#fef2f2",color:msg.indexOf("\u2705")===0?GR:"#dc2626",fontSize:13,marginBottom:12}}>{msg}</div>}<div style={{marginBottom:11}}><label style={lbl}>Star\u00e9 heslo</label><input type="password" style={inp} value={op} onChange={e=>setOp(e.target.value)}/></div><div style={{marginBottom:11}}><label style={lbl}>Nov\u00e9 heslo (min. 6 znak\u016f)</label><input type="password" style={inp} value={np} onChange={e=>setNp(e.target.value)}/></div><div style={{marginBottom:14}}><label style={lbl}>Potvrzen\u00ed</label><input type="password" style={inp} value={cp} onChange={e=>setCp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&changePw()}/></div><button onClick={changePw} disabled={busy} style={{width:"100%",padding:12,background:OR,color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:14,cursor:busy?"default":"pointer",opacity:busy?0.6:1}}>{busy?"\u23f3 Ukl\u00e1d\u00e1m...":"Ulo\u017eit nov\u00e9 heslo"}</button></div><CloseCitySection city={city} camp={camp} rows={rows} closeCity={closeCity}/></div>);
+  return(<div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>🔑 Změnit heslo <span style={{fontWeight:400,color:"#bbb",fontSize:11}}>(sdílený účet {AUTH.email||""})</span></h3>{msg&&<div style={{padding:9,borderRadius:8,background:msg.indexOf("✅")===0?"#f0fdf4":"#fef2f2",color:msg.indexOf("✅")===0?GR:"#dc2626",fontSize:13,marginBottom:12}}>{msg}</div>}<div style={{marginBottom:11}}><label style={lbl}>Staré heslo</label><input type="password" style={inp} value={op} onChange={e=>setOp(e.target.value)}/></div><div style={{marginBottom:11}}><label style={lbl}>Nové heslo (min. 6 znaků)</label><input type="password" style={inp} value={np} onChange={e=>setNp(e.target.value)}/></div><div style={{marginBottom:14}}><label style={lbl}>Potvrzení</label><input type="password" style={inp} value={cp} onChange={e=>setCp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&changePw()}/></div><button onClick={changePw} disabled={busy} style={{width:"100%",padding:12,background:OR,color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:14,cursor:busy?"default":"pointer",opacity:busy?0.6:1}}>{busy?"⏳ Ukládám...":"Uložit nové heslo"}</button></div>);
+}
+function ZalohaCard({me}){
+  const [msg,setMsg]=useState("");const [busy,setBusy]=useState(false);
+  async function exportJson(){
+    setBusy(true);setMsg("");
+    try{
+      const results=await Promise.all([restGet("pf_userdata/"+me.id),restGetCol("pf_cities_history"),restGetCol("pf_users")]);
+      const userdata=results[0],history=results[1]||[],usersCol=results[2]||[];
+      if(!userdata){setMsg("❌ Data se nepodařilo načíst.");setBusy(false);return;}
+      const dump={app:"Prodejni Tahak",exportVersion:1,exportedAt:new Date().toISOString(),dataUid:me.id,userdata:userdata,citiesHistory:history,users:usersCol};
+      const blob=new Blob([JSON.stringify(dump,null,2)],{type:"application/json"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url;a.download="tahak-zaloha-"+new Date().toISOString().slice(0,10)+".json";
+      document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),3000);
+      setMsg("✅ Záloha stažena · aktuální město + "+history.length+" měst v archivu. Ulož ji např. na Disk Google.");
+    }catch(e){setMsg("❌ Export selhal. Zkontroluj připojení a zkus znovu.");}
+    setBusy(false);
+  }
+  return(<div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 8px",fontSize:13,color:DK}}>💾 Záloha dat</h3><div style={{fontSize:12,color:"#999",lineHeight:1.6,marginBottom:12}}>Stáhne kompletní zálohu všech dat (aktuální město, Vizitka, skripty, celý archiv měst) jako jeden soubor JSON. Pojistka proti omylu, chybě i ztrátě zařízení — doporučuji stáhnout před každým uzavřením města.</div>{msg&&<div style={{padding:9,borderRadius:8,background:msg.indexOf("✅")===0?"#f0fdf4":"#fef2f2",color:msg.indexOf("✅")===0?GR:"#dc2626",fontSize:12.5,marginBottom:12}}>{msg}</div>}<button onClick={exportJson} disabled={busy} style={{width:"100%",padding:12,background:GR,color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:14,cursor:busy?"default":"pointer",opacity:busy?0.6:1}}>{busy?"⏳ Připravuji...":"⬇️ Stáhnout zálohu (JSON)"}</button></div>);
+}
+
+function Nastaveni({me,city,camp,rows,closeCity}){
+  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Nastavení</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",gap:11}}><div style={{width:44,height:44,background:OR,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:19}}>{me.name[0]}</div><div><div style={{fontWeight:800,fontSize:15,color:DK}}>{me.name}</div><div style={{color:"#ccc",fontSize:11}}>{AUTH.email||"Obchodní zástupce · Pro-Factor"}</div></div></div></div><PwdCard/><ZalohaCard me={me}/><CloseCitySection city={city} camp={camp} rows={rows} closeCity={closeCity}/></div>);
 }
 
 // ── ADMIN ─────────────────────────────────────────────────────
 function Admin({users,upUsers,city,camp,rows,closeCity}){
-  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>\u2699\ufe0f Admin panel</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>\ud83d\udd10 P\u0159\u00edstup do appky</h3><div style={{background:"#f9f9f9",borderRadius:10,padding:11,fontSize:12,color:"#666",lineHeight:1.7}}>P\u0159ihl\u00e1\u0161en\u00ed b\u011b\u017e\u00ed p\u0159es <strong>Firebase Authentication</strong> (e-mail + heslo). Nov\u00e9 \u00fa\u010dty se zakl\u00e1daj\u00ed ru\u010dn\u011b ve <strong>Firebase Console \u2192 Authentication \u2192 Users</strong>. \u017d\u00e1dn\u00fd p\u0159\u00edstupov\u00fd k\u00f3d, \u017e\u00e1dn\u00e1 ve\u0159ejn\u00e1 registrace.<br/>P\u0159ihl\u00e1\u0161en\u00fd \u00fa\u010det: <strong>{AUTH.email||"\u2014"}</strong></div></div><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>\ud83d\udc65 Profily ({users.length})</h3>{users.length===0&&<div style={{color:"#ccc",textAlign:"center",padding:"18px 0",fontSize:13}}>\u017d\u00e1dn\u00e9 profily.</div>}{users.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 0",borderBottom:"1px solid #f8f8f8"}}><div style={{width:32,height:32,background:OR,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:14}}>{(u.name||"?")[0]}</div><div style={{flex:1}}><div style={{fontWeight:600,color:DK,fontSize:13}}>{u.name}</div><div style={{fontSize:10,color:"#ccc"}}>{u.createdAt?new Date(u.createdAt).toLocaleDateString("cs"):"\u2014"}</div></div><button onClick={async()=>{if(window.confirm("Smazat profil "+u.name+"? Data z\u016fstanou v datab\u00e1zi."))await upUsers(users.filter(x=>x.id!==u.id));}} style={{background:"#fef2f2",border:"none",color:"#dc2626",padding:"5px 8px",borderRadius:7,fontSize:12,cursor:"pointer"}}>\ud83d\uddd1\ufe0f</button></div>))}</div><CloseCitySection city={city} camp={camp} rows={rows} closeCity={closeCity}/></div>);
+  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Admin panel</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>🔐 Přístup do appky</h3><div style={{background:"#f9f9f9",borderRadius:10,padding:11,fontSize:12,color:"#666",lineHeight:1.7}}>Přihlášení běží přes <strong>Firebase Authentication</strong> (e-mail + heslo). Nové účty se zakládají ručně ve <strong>Firebase Console → Authentication → Users</strong>. Žádný přístupový kód, žádná veřejná registrace.<br/>Přihlášený účet: <strong>{AUTH.email||"—"}</strong></div></div><PwdCard/><ZalohaCard me={me}/><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>👥 Profily ({users.length})</h3>{users.length===0&&<div style={{color:"#ccc",textAlign:"center",padding:"18px 0",fontSize:13}}>Žádné profily.</div>}{users.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 0",borderBottom:"1px solid #f8f8f8"}}><div style={{width:32,height:32,background:OR,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:14}}>{(u.name||"?")[0]}</div><div style={{flex:1}}><div style={{fontWeight:600,color:DK,fontSize:13}}>{u.name}</div><div style={{fontSize:10,color:"#ccc"}}>{u.createdAt?new Date(u.createdAt).toLocaleDateString("cs"):"—"}</div></div><button onClick={async()=>{if(window.confirm("Smazat profil "+u.name+"? Data zůstanou v databázi."))await upUsers(users.filter(x=>x.id!==u.id));}} style={{background:"#fef2f2",border:"none",color:"#dc2626",padding:"5px 8px",borderRadius:7,fontSize:12,cursor:"pointer"}}>🗑️</button></div>))}</div><CloseCitySection city={city} camp={camp} rows={rows} closeCity={closeCity}/></div>);
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
