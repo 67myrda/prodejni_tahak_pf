@@ -202,6 +202,25 @@ async function restPatch(path,data){
     return true;
   }catch(e){console.error("restPatch",path,e.message);return false;}
 }
+// E3: PATCH s tečkovanými cestami (per-řádkové zápisy rows.rID).
+// entry = {path,value} pro zápis, {path,del:true} pro smazání pole.
+async function restPatchPaths(path,entries){
+  try{
+    const obj={};const maskParts=[];
+    for(const e of entries){
+      maskParts.push("updateMask.fieldPaths="+encodeURIComponent(e.path));
+      if(e.del)continue;
+      const segs=e.path.split(".");let cur=obj;
+      for(let i=0;i<segs.length-1;i++){if(!cur[segs[i]]||typeof cur[segs[i]]!=="object")cur[segs[i]]={};cur=cur[segs[i]];}
+      cur[segs[segs.length-1]]=e.value;
+    }
+    const fields={};for(const k in obj)if(Object.prototype.hasOwnProperty.call(obj,k))fields[k]=toFB(obj[k]);
+    const url=`${FB_BASE}/${path}?key=${FB_KEY}&`+maskParts.join("&");
+    const r=await authedFetch(url,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({fields})});
+    if(!r.ok){const e=await r.json();throw new Error(JSON.stringify(e.error||e));}
+    return true;
+  }catch(e){console.error("restPatchPaths",path,e.message);return false;}
+}
 async function restGetCol(col){
   try{
     const r=await authedFetch(`${FB_BASE}/${col}?key=${FB_KEY}`);
@@ -316,7 +335,7 @@ const DEF_SCRIPTS={
   scenar:`🎯 PRODEJNÍ SCÉNÁŘ\n\n1️⃣ "Mám pro vás něco zajímavého. Máte chvilku?"\n\n2️⃣ "Vybírám pár místních firem do nového ročníku plakátu – a vybral jsem si vás."\n\n3️⃣ "Znáte tento plakát? 180 míst po celém regionu."\n💡 Dejte zákazníkovi plakát do ruky.\n\n4️⃣ "Lidi firmy na plakátu vnímají jako součást regionu."\n\n5️⃣ "Kulturavemeste.cz – 8 tisíc lidí měsíčně, proklik na váš web."\n\n6️⃣ "Zbývají poslední dvě místa."\n\n7️⃣ "Od 12 stovek měsíčně, grafika zdarma."\n\n🔚 "Máte vlastní grafiku, nebo ji necháte na nás?"`,
 };
 const DEF_LABELS=['1','2','3','4','5','6','7a','7b','8','9','10','11','12','13','14a','14b','15a','15b','16','17','18','19','20','21','22a','22b','23','24','25','26','27','28','29'];
-const mkRows=()=>DEF_LABELS.map((lbl,i)=>({id:i+1,rowId:`r${Date.now()}${i}`,label:lbl,type:"?",price:"",price2:"",existingPrice:"",navyseno:"",gfxStatus:"red",advertiser:"",graphic:"",signedBy:"",kBonus:""}));
+const mkRows=()=>DEF_LABELS.map((lbl,i)=>({id:i+1,rowId:`r${Date.now()}${i}`,label:lbl,type:"?",price:"",price2:"",existingPrice:"",navyseno:"",gfxStatus:"red",advertiser:"",graphic:"",signedBy:"",kBonus:"",customerName:"",customerAddress:"",customerContact:"",customerPhone:"",customerEmail:"",contractDate:"",customerNote:"",custVer:1}));
 const TYPES={
   "?":{bg:"#fed7aa",color:"#9a3412",btn:"?",label:"Výchozí"},
   V:{bg:"#ffffff",color:"#6b7280",btn:"V",label:"Volné"},
@@ -329,9 +348,33 @@ const TYPES={
 const GFX_ORDER=["red","orange","green"];
 const GFX_META={red:{icon:"🔴",label:"Nedodaná grafika"},orange:{icon:"🟠",label:"Rozpracovaná (u grafika / k podpisu)"},green:{icon:"🟢",label:"Grafika vyřízena"}};
 function nextGfx(s){const i=GFX_ORDER.indexOf(s||"red");return GFX_ORDER[(i+1)%3];}
+// ── E3: rows jako mapa (rowId -> řádek) + strukturovaný zákazník ─
+function rowsToArr(v){if(Array.isArray(v))return v;if(v&&typeof v==="object")return Object.values(v);return[];}
+function rowsToMap(a){const m={};(a||[]).forEach(r=>{if(r&&r.rowId)m[r.rowId]=r;});return m;}
+// Jednorázová extrakce z volného textu "advertiser" (custVer). Původní zápis
+// se VŽDY celý uloží do customerNote — nic se nikdy neztratí.
+function extractCustomer(adv){
+  const s=String(adv||"").trim();
+  const out={customerName:"",customerAddress:"",customerContact:"",customerPhone:"",customerEmail:"",contractDate:"",customerNote:""};
+  if(!s)return out;
+  const em=s.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);if(em)out.customerEmail=em[0];
+  const ph=s.match(/(?:\+\d{3}[ .-]?)?\d{3}[ .-]?\d{3}[ .-]?\d{3}/);if(ph)out.customerPhone=ph[0].trim();
+  out.customerName=s.split(/[\/\n]/)[0].replace(/_/g," ").trim();
+  const slash=s.indexOf("/");
+  if(slash>=0){let rest=s.slice(slash+1);rest=rest.split(/[☎📞\n]/)[0];if(out.customerPhone)rest=rest.split(out.customerPhone)[0];if(out.customerEmail)rest=rest.split(out.customerEmail)[0];out.customerContact=rest.trim().replace(/[,;.\s]+$/,"");}
+  out.customerNote=s;
+  return out;
+}
+function migrateRow(r,i){
+  const b={...r,label:r.label||String(r.id||i+1),navyseno:r.navyseno||'',price2:r.price2||'',existingPrice:r.existingPrice||'',signedBy:r.signedBy||'',kBonus:r.kBonus||'',type:(!r.type||r.type==="P")?"?":r.type,gfxStatus:r.gfxStatus||(r.gfxOk?"green":"red")};
+  if(!b.custVer){Object.assign(b,extractCustomer(b.advertiser));b.custVer=1;}
+  ["customerName","customerAddress","customerContact","customerPhone","customerEmail","contractDate","customerNote"].forEach(k=>{if(b[k]===undefined||b[k]===null)b[k]="";});
+  return b;
+}
 function migrateRows(raw){
-  if(!raw||raw.length===0)return mkRows();
-  return raw.map((r,i)=>({...r,label:r.label||String(r.id||i+1),navyseno:r.navyseno||'',price2:r.price2||'',existingPrice:r.existingPrice||'',signedBy:r.signedBy||'',kBonus:r.kBonus||'',type:(!r.type||r.type==="P")?"?":r.type,gfxStatus:r.gfxStatus||(r.gfxOk?"green":"red")}));
+  const arr=rowsToArr(raw);
+  if(arr.length===0)return mkRows();
+  return arr.map(migrateRow);
 }
 function GfxBadge({s}){
   const st=s||"red";
@@ -475,7 +518,10 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
     for(const k of keys){
       const item=p[k];
       if(item.ts>lastLocalWrite.current)lastLocalWrite.current=item.ts;
-      const ok=await restPatch("pf_userdata/"+uid,{[k]:item.value,updatedAt:item.ts});
+      let ok;
+      if(k.indexOf("rows.")===0){ok=await restPatchPaths("pf_userdata/"+uid,[item.value===null?{path:k,del:true}:{path:k,value:item.value},{path:"updatedAt",value:item.ts}]);}
+      else if(k==="rows"){ok=await restPatch("pf_userdata/"+uid,{rows:Array.isArray(item.value)?rowsToMap(item.value):item.value,updatedAt:item.ts});}
+      else{ok=await restPatch("pf_userdata/"+uid,{[k]:item.value,updatedAt:item.ts});}
       if(ok)clearPendingField(uid,k,item.ts);else allOk=false;
     }
     setSyncStatus(allOk?"ok":"err");
@@ -498,7 +544,12 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
       if(data.args)setArgs(data.args);else setArgs(DEF_ARGS);
       if(data.metrics)setMetrics(data.metrics);else setMetrics(DEF_METRICS);
       if(data.objs)setObjs(data.objs);else setObjs(DEF_OBJS);
-      if(data.rows)setRows(migrateRows(data.rows));else setRows(mkRows());
+      if(data.rows){
+        const wasArr=Array.isArray(data.rows);
+        const arrR=sortRowsByLabel(migrateRows(data.rows));
+        setRows(arrR);
+        if(wasArr){const mts=Date.now();lastLocalWrite.current=mts;addPending(uid,"rows",rowsToMap(arrR),mts);flushPending();}
+      }else setRows(mkRows());
       if(data.camp)setCamp(data.camp);else setCamp({startDate:"",endDate:"",marginPct:20,notes:"",summary:""});
       setIntro(data.intro!==undefined?data.intro:DEF_INTRO);
       if(data.csize)setCsize(data.csize);else setCsize({sizeA1:"",sizeA2:"",price:""});
@@ -525,7 +576,7 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
       const apply=(f,fn,v)=>{if(!pend[f])fn(v);};
       if(data.city)apply("city",setCity,data.city);if(data.qb)apply("qb",setQb,data.qb);if(data.prices)apply("prices",setPrices,data.prices);
       if(data.texts)apply("texts",setTexts,data.texts);if(data.args)apply("args",setArgs,data.args);if(data.metrics)apply("metrics",setMetrics,data.metrics);
-      if(data.objs)apply("objs",setObjs,data.objs);if(data.rows)apply("rows",setRows,migrateRows(data.rows));if(data.camp)apply("camp",setCamp,data.camp);
+      if(data.objs)apply("objs",setObjs,data.objs);if(data.rows&&!pend["rows"]&&!Object.keys(pend).some(k=>k.indexOf("rows.")===0))setRows(sortRowsByLabel(migrateRows(data.rows)));if(data.camp)apply("camp",setCamp,data.camp);
       if(data.intro!==undefined)apply("intro",setIntro,data.intro);if(data.csize)apply("csize",setCsize,data.csize);
     },30000);
     return()=>clearInterval(interval);
@@ -541,7 +592,8 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
   async function sv(field,value){
     // Update local state immediately
     const setters={city:setCity,qb:setQb,prices:setPrices,texts:setTexts,args:setArgs,metrics:setMetrics,objs:setObjs,rows:setRows,camp:setCamp,intro:setIntro,csize:setCsize};
-    if(setters[field])setters[field](value);
+    if(field==="rows"){const arrR=sortRowsByLabel(rowsToArr(value));setRows(arrR);value=rowsToMap(arrR);}
+    else if(setters[field])setters[field](value);
     // Zápis přes frontu: při selhání zůstane čekat a opakuje se
     const ts=Date.now();
     lastLocalWrite.current=ts;
@@ -552,6 +604,38 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
       clearPendingField(uid,field,ts);
       setSyncStatus(Object.keys(getPending(uid)).length?"err":"ok");
     }else setSyncStatus("err");
+  }
+
+  // E3: per-řádkový zápis — jen změněný řádek (updateMask rows.rID).
+  // Pokud ještě čeká CELOPOLOVÝ zápis "rows" (migrace offline apod.),
+  // sloučí se změna do něj — per-row patch na staré array pole by byl nebezpečný.
+  async function svRowWire(entries,key,val,ts){
+    addPending(uid,key,val,ts);
+    setSyncStatus("saving");
+    const ok=await restPatchPaths("pf_userdata/"+uid,entries);
+    if(ok){clearPendingField(uid,key,ts);setSyncStatus(Object.keys(getPending(uid)).length?"err":"ok");}else setSyncStatus("err");
+  }
+  async function svRowsWhole(mutate){
+    const p=getPending(uid);
+    const base=Array.isArray(p["rows"].value)?rowsToMap(p["rows"].value):{...p["rows"].value};
+    mutate(base);
+    const ts=Date.now();lastLocalWrite.current=ts;
+    addPending(uid,"rows",base,ts);
+    setSyncStatus("saving");
+    const ok=await restPatch("pf_userdata/"+uid,{rows:base,updatedAt:ts});
+    if(ok){clearPendingField(uid,"rows",ts);setSyncStatus(Object.keys(getPending(uid)).length?"err":"ok");}else setSyncStatus("err");
+  }
+  async function svRow(row){
+    setRows(prev=>{const ex=prev.some(r=>r.rowId===row.rowId);return sortRowsByLabel(ex?prev.map(r=>r.rowId===row.rowId?row:r):[...prev,row]);});
+    if(getPending(uid)["rows"])return svRowsWhole(m=>{m[row.rowId]=row;});
+    const ts=Date.now();lastLocalWrite.current=ts;
+    return svRowWire([{path:"rows."+row.rowId,value:row},{path:"updatedAt",value:ts}],"rows."+row.rowId,row,ts);
+  }
+  async function svRowDel(rowId){
+    setRows(prev=>prev.filter(r=>r.rowId!==rowId));
+    if(getPending(uid)["rows"])return svRowsWhole(m=>{delete m[rowId];});
+    const ts=Date.now();lastLocalWrite.current=ts;
+    return svRowWire([{path:"rows."+rowId,del:true},{path:"updatedAt",value:ts}],"rows."+rowId,null,ts);
   }
 
   function saveCity(cityData){
@@ -585,7 +669,7 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
     const newRows=mkRows();
     const resetTs=Date.now();
     lastLocalWrite.current=resetTs;
-    const ok2=await restPatch("pf_userdata/"+uid,{city:newCity,camp:newCamp,rows:newRows,updatedAt:resetTs});
+    const ok2=await restPatch("pf_userdata/"+uid,{city:newCity,camp:newCamp,rows:rowsToMap(newRows),updatedAt:resetTs});
     if(!ok2)return{ok:false,msg:"Archiv uložen, ale reset města selhal. Zkontroluj připojení a zkus znovu."};
     setPendingLS(uid,{}); // zahodit čekající zápisy staré edice
     setCity(newCity);setCamp(newCamp);setRows(newRows);
@@ -618,8 +702,8 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
     <main style={{paddingBottom:70}}>
       {tab==="dashboard"&&cityFull&&qb&&intro!==null&&<Dashboard city={cityFull} qb={qb} intro={intro} onNav={nav} saveCity={saveCity} sv={sv}/>}
       {tab==="prezentace"&&texts&&args&&<Prezentace texts={texts} args={args} metrics={metrics} objs={objs} prices={prices} csize={csize} sv={sv}/>}
-      {tab==="vizitka"&&rows&&camp&&<Vizitka rows={rows} camp={camp} totalRev={totalRev} cityName={city?.name} sv={sv} posterImg={cityImgs.posterImg} onSavePosterImg={(img)=>saveCity({...cityFull,posterImg:img})}/>}
-      {tab==="shrnuti"&&<Shrnuti uid={uid}/>}
+      {tab==="vizitka"&&rows&&camp&&<Vizitka rows={rows} camp={camp} totalRev={totalRev} cityName={city?.name} sv={sv} svRow={svRow} svRowDel={svRowDel} posterImg={cityImgs.posterImg} onSavePosterImg={(img)=>saveCity({...cityFull,posterImg:img})}/>}
+      {tab==="shrnuti"&&<Shrnuti uid={uid} city={city} camp={camp} rows={rows}/>}
       {tab==="nastaveni"&&<Nastaveni me={me} city={city} camp={camp} rows={rows} closeCity={closeCity}/>}
       {tab==="admin"&&<Admin me={me} users={users} upUsers={upUsers} city={city} camp={camp} rows={rows} closeCity={closeCity}/>}
     </main>
@@ -746,7 +830,7 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
     const bg=t?t.bg:"#f5f5f5";
     const col=t?t.color:"#ccc";
     const bord=r&&r.type==="V"?"1px solid #d1d5db":"none";
-    const words=r?(r.advertiser||"").trim():"";
+    const words=r?String(r.customerName||r.advertiser||"").trim():"";
     const w=weight||50;
     if(horiz){return(
       <div onClick={()=>r&&onEdit(r.rowId)} style={{background:bg,border:bord,borderRadius:3,padding:"3px 6px",cursor:r?"pointer":"default",display:"flex",alignItems:"center",gap:4,minHeight:18,flex:1,minWidth:0,overflow:"hidden"}}>
@@ -823,7 +907,7 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
 }
 
 // ── VIZITKA ───────────────────────────────────────────────────
-function Vizitka({rows,camp,totalRev,cityName,sv,posterImg,onSavePosterImg}){
+function Vizitka({rows,camp,totalRev,cityName,sv,svRow,svRowDel,posterImg,onSavePosterImg}){
   const [eRid,setERid]=useState(null);const [rd,setRd]=useState({});
   const [driveBusy,setDriveBusy]=useState(false);
   const [eCamp,setECamp]=useState(false);const [cd,setCd]=useState({...camp});
@@ -845,7 +929,7 @@ function Vizitka({rows,camp,totalRev,cityName,sv,posterImg,onSavePosterImg}){
   const marginF=Math.round(revF*(camp.marginPct/100))+kBonusF,marginM=Math.round(revM*(camp.marginPct/100))+kBonusM;
   const totalRev2=rows.reduce((s,r)=>s+(parseFloat(r.price2)||0),0);
   const totalNav=rows.reduce((s,r)=>s+((r.existingPrice&&r.price)?(parseFloat(r.price)-parseFloat(r.existingPrice)):0),0);
-  function addRow(){const mx=Math.max(...rows.map(r=>r.id||0),0);const lbl=String(mx+1);sv("rows",sortRowsByLabel([...rows,{id:mx+1,rowId:"r"+Date.now(),label:lbl,type:"?",price:"",price2:"",existingPrice:"",navyseno:"",gfxStatus:"red",advertiser:"",graphic:"",signedBy:"",kBonus:""}]));}
+  function addRow(){const mx=Math.max(...rows.map(r=>r.id||0),0);const lbl=String(mx+1);svRow({id:mx+1,rowId:"r"+Date.now(),label:lbl,type:"?",price:"",price2:"",existingPrice:"",navyseno:"",gfxStatus:"red",advertiser:"",graphic:"",signedBy:"",kBonus:"",customerName:"",customerAddress:"",customerContact:"",customerPhone:"",customerEmail:"",contractDate:"",customerNote:"",custVer:1});}
 
   function openPrintPage(){
     const typBg={"?":"#fed7aa",V:"#f5f5f5",N:"#dcfce7",S:"#fff7ed",Z:"#e7d2b8",J:"#dbeafe",K:"#e9d5ff"};
@@ -854,7 +938,7 @@ function Vizitka({rows,camp,totalRev,cityName,sv,posterImg,onSavePosterImg}){
     const totalRev2_p=rows.reduce((s,r)=>s+(parseFloat(r.price2)||0),0);const totalNav_p=rows.reduce((s,r)=>s+((r.existingPrice&&r.price)?(parseFloat(r.price)-parseFloat(r.existingPrice)):0),0);const rowsHtml=rows.map((r,i)=>{
       const bg=i%2?"#faf8f5":"#ffffff";
       const tb=r.type?`<span style="background:${typBg[r.type]};color:${typCol[r.type]};padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;">${r.type}</span>`:`<span style="color:#ddd">—</span>`;
-      const adv=(r.advertiser||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      const adv=(String(r.customerName||r.advertiser||"")+(r.customerPhone?" · "+r.customerPhone:"")).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       const grph=(r.graphic||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       const gfxMark=GFX_META[r.gfxStatus||"red"].icon;
       const genderMark=r.signedBy==="F"?"♀️":r.signedBy==="M"?"♂️":"—";
@@ -964,7 +1048,7 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
     const url=URL.createObjectURL(blob);
     window.open(url,"_blank");
   }
-  function toggleGfx(rowId){sv("rows",rows.map(r=>r.rowId===rowId?{...r,gfxStatus:nextGfx(r.gfxStatus)}:r));}
+  function toggleGfx(rowId){const r0=rows.find(r=>r.rowId===rowId);if(r0)svRow({...r0,gfxStatus:nextGfx(r0.gfxStatus)});}
   function getByLabel(label){return rows.find(r=>r.label===label);}
   function openEditByRowId(rowId){const r=rows.find(x=>x.rowId===rowId);if(r){setRd({...r});setERid(r.rowId);}}
   return(<div style={{padding:"16px 16px 0"}}>
@@ -991,7 +1075,7 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
         <div style={{display:"flex",alignItems:"center",gap:0,minWidth:0}}>
           <span className="nav-col" style={{fontSize:9.5,color:"#7c3aed",fontWeight:500,minWidth:38,flexShrink:0}}>{row.existingPrice?parseInt(row.existingPrice).toLocaleString("cs"):"—"}</span>
           <span className="nav-col" style={{fontSize:9.5,color:"#c2410c",fontWeight:500,minWidth:40,flexShrink:0}}>{nav!==null?nav.toLocaleString("cs"):"—"}</span>
-          <span style={{fontSize:10,color:DK,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{row.advertiser||<span style={{color:"#ddd"}}>–</span>}</span>
+          <span style={{fontSize:10,color:DK,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{row.customerName||row.advertiser||<span style={{color:"#ddd"}}>–</span>}</span>
         </div>
         <button onClick={()=>{setRd({...row});setERid(row.rowId);}} style={{background:"none",border:"none",color:OR,cursor:"pointer",fontSize:14,padding:0}}>✏️</button>
       </div>);})}
@@ -1010,9 +1094,9 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
     <button onClick={openPrintPage} style={{width:"100%",padding:"12px 0",background:DK,color:"white",border:"none",borderRadius:10,fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12}}>📄 Připravit k uložení / tisku</button>
     <div style={{background:"white",borderRadius:10,padding:11,marginBottom:20}}><div style={{fontWeight:700,marginBottom:8,color:DK,fontSize:13}}>Legenda typů</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{Object.entries(TYPES).map(([k,t])=>(<div key={k} style={{display:"flex",alignItems:"center",gap:5}}><span style={{background:t.bg,color:t.color,padding:"1px 6px",borderRadius:4,fontWeight:700,fontSize:10,border:k==="V"?"1px solid #d1d5db":"none"}}>{t.btn}</span><span style={{fontSize:11,color:"#555"}}>{t.label}</span></div>))}</div></div>
     {eRid!==null&&(()=>{
-  const delBtn=<button onClick={()=>{if(window.confirm("Smazat řádek #"+(rd.label||rd.id)+"?"))sv("rows",rows.filter(r=>r.rowId!==eRid));setERid(null);}} style={{background:"#fef2f2",border:"1.5px solid #fca5a5",color:"#dc2626",padding:"3px 9px",borderRadius:7,fontSize:12,cursor:"pointer",fontWeight:700}}>🗑️</button>;
+  const delBtn=<button onClick={()=>{if(window.confirm("Smazat řádek #"+(rd.label||rd.id)+"?"))svRowDel(eRid);setERid(null);}} style={{background:"#fef2f2",border:"1.5px solid #fca5a5",color:"#dc2626",padding:"3px 9px",borderRadius:7,fontSize:12,cursor:"pointer",fontWeight:700}}>🗑️</button>;
   return(
-  <Modal title={"Pole "+( rd.label||rd.id)} onClose={()=>setERid(null)} onSave={()=>{sv("rows",sortRowsByLabel(rows.map(r=>r.rowId===eRid?rd:r)));setERid(null);}} extraHeader={delBtn}>
+  <Modal title={"Pole "+( rd.label||rd.id)} onClose={()=>setERid(null)} onSave={()=>{svRow(rd);setERid(null);}} extraHeader={delBtn}>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:11}}>
       <div><label style={lbl}>Označení pozice</label><input style={inp} value={rd.label||""} onChange={e=>setRd(p=>({...p,label:e.target.value}))} placeholder="např. 7a, 12+13..."/></div>
       <div><label style={lbl}>Podepsal(a)</label><div style={{display:"flex",gap:5,marginTop:4}}>{[["F","♀️ Monika"],["M","♂️ Myrda"]].map(([v,l])=>(<button key={v} onClick={()=>setRd(p=>({...p,signedBy:p.signedBy===v?"":v}))} style={{flex:1,padding:"7px 0",borderRadius:8,border:rd.signedBy===v?`2px solid ${OR}`:"1.5px solid #e5e7eb",background:rd.signedBy===v?"#fff3e8":"white",fontWeight:rd.signedBy===v?700:400,fontSize:11,cursor:"pointer",color:rd.signedBy===v?OR:"#666"}}>{l}</button>))}</div></div>
@@ -1025,11 +1109,22 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
       <div><label style={{...lbl,color:"#c2410c"}}>Navýšení <span style={{fontWeight:400,color:"#ddd",fontSize:11}}>(auto)</span></label><div style={{...inp,display:"flex",alignItems:"center",background:"#faf9f7",color:"#c2410c",fontWeight:700}}>{(rd.existingPrice&&rd.price)?(parseFloat(rd.price)-parseFloat(rd.existingPrice)).toLocaleString("cs"):"—"}</div></div>
     </div>
     <div style={{marginBottom:11}}><label style={lbl}>Grafika</label><div style={{display:"flex",gap:5,marginTop:4}}>{GFX_ORDER.map(g=>(<button key={g} onClick={()=>setRd(p=>({...p,gfxStatus:g}))} style={{flex:1,padding:"7px 0",borderRadius:8,border:(rd.gfxStatus||"red")===g?`2px solid ${OR}`:"1.5px solid #e5e7eb",background:(rd.gfxStatus||"red")===g?"#fff3e8":"white",fontWeight:(rd.gfxStatus||"red")===g?700:400,fontSize:11,cursor:"pointer",color:"#666"}}>{GFX_META[g].icon} {g==="red"?"Chybí":g==="orange"?"V řešení":"Hotovo"}</button>))}</div></div>
-    <div style={{marginBottom:11}}><label style={lbl}>Inzerent</label><textarea style={{...inp,minHeight:80,resize:"vertical"}} value={rd.advertiser} onChange={e=>setRd(p=>({...p,advertiser:e.target.value}))} placeholder={"Název firmy\n+420 123 456 789"}/></div>
+    <div style={{marginBottom:11,background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:10,padding:10}}>
+      <div style={{fontSize:11,fontWeight:800,color:"#475569",marginBottom:8}}>👤 Zákazník</div>
+      <div style={{marginBottom:8}}><label style={lbl}>Firma / podnikatel</label><input style={inp} value={rd.customerName||""} onChange={e=>setRd(p=>({...p,customerName:e.target.value}))} placeholder="Název firmy"/></div>
+      <div style={{marginBottom:8}}><label style={lbl}>Adresa</label><input style={inp} value={rd.customerAddress||""} onChange={e=>setRd(p=>({...p,customerAddress:e.target.value}))} placeholder="Ulice, město"/></div>
+      <div style={{marginBottom:8}}><label style={lbl}>Kontaktní osoba</label><input style={inp} value={rd.customerContact||""} onChange={e=>setRd(p=>({...p,customerContact:e.target.value}))} placeholder="Jméno, funkce"/></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+        <div><label style={lbl}>Telefon {rd.customerPhone?<a href={"tel:"+String(rd.customerPhone).replace(/[^+0-9]/g,"")} style={{textDecoration:"none",fontSize:12}}>📞</a>:null}</label><input type="tel" style={inp} value={rd.customerPhone||""} onChange={e=>setRd(p=>({...p,customerPhone:e.target.value}))} placeholder="+420…"/></div>
+        <div><label style={lbl}>E-mail {rd.customerEmail?<a href={"mailto:"+rd.customerEmail} style={{textDecoration:"none",fontSize:12}}>✉️</a>:null}</label><input type="email" style={inp} value={rd.customerEmail||""} onChange={e=>setRd(p=>({...p,customerEmail:e.target.value}))} placeholder="info@…"/></div>
+      </div>
+      <div style={{marginBottom:8}}><label style={lbl}>Datum uzavření smlouvy</label><input type="date" style={inp} value={rd.contractDate||""} onChange={e=>setRd(p=>({...p,contractDate:e.target.value}))}/></div>
+      <div><label style={lbl}>Poznámka <span style={{fontWeight:400,color:"#aaa",fontSize:10.5}}>(obsahuje i původní volný zápis)</span></label><textarea style={{...inp,minHeight:56,resize:"vertical"}} value={rd.customerNote||""} onChange={e=>setRd(p=>({...p,customerNote:e.target.value}))} placeholder="Volná poznámka…"/></div>
+    </div>
     <div style={{marginBottom:11}}><label style={lbl}>Grafika / Poznámka</label><textarea style={{...inp,minHeight:60,resize:"vertical"}} value={rd.graphic} onChange={e=>setRd(p=>({...p,graphic:e.target.value}))} placeholder="Poznámky, termíny..."/></div>
     {(()=>{
       const dim=dimOf(rd.label||rd.id);
-      const custName=subjClean((rd.advertiser||"").split("/")[0].replace(/_/g," "),false);
+      const custName=subjClean(String(rd.customerName||(rd.advertiser||"").split("/")[0]).replace(/_/g," "),false);
       const subj=`${subjClean(cityName,true)} č. ${rd.label||rd.id}${dim?` (${dim})`:""}${custName?` ${custName}`:""}`.trim();
       const files=rd.driveFiles||[];
       const filesTxt=files.length?"\n\nSoubory (Google Disk):\n"+files.map(f=>f.url).join("\n"):"";
@@ -1066,7 +1161,7 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
         <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
           {GFX_TEMPLATES.map((t,i)=>(<button key={i} onClick={()=>{window.location.href=mailtoUrl(GFX_EMAIL,subj,t.body+filesTxt+EMAIL_SIGN);}} style={btnS}>{t.label}</button>))}
         </div>
-        <button onClick={()=>{window.location.href=mailtoUrl("",subj,custTemplate(subjClean(cityName,true),rd.label||rd.id)+filesTxt);}} style={{...btnS,border:"1.5px solid #a7f3d0",color:"#047857"}}>✉️ Zákazníkovi – návrh ke schválení <span style={{fontWeight:400,fontSize:10}}>(adresu doplň v Gmailu)</span></button>
+        <button onClick={()=>{window.location.href=mailtoUrl(rd.customerEmail||"",subj,custTemplate(subjClean(cityName,true),rd.label||rd.id)+filesTxt);}} style={{...btnS,border:"1.5px solid #a7f3d0",color:"#047857"}}>✉️ Zákazníkovi – návrh ke schválení <span style={{fontWeight:400,fontSize:10}}>{rd.customerEmail?"→ "+rd.customerEmail:"(adresu doplň v Gmailu)"}</span></button>
         <div style={{fontSize:9.5,color:"#93c5fd",marginTop:6}}>Po nahrání souboru nezapomeň modal Uložit — odkazy se ukládají k poli.</div>
       </div>);
     })()}
@@ -1079,7 +1174,7 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
 
 // ── SOUBORY ───────────────────────────────────────────────────
 const HIST_EMPTY={mesto:"",edice:new Date().getFullYear(),datumOd:"",datumDo:"",procentoMarze:20,celkemPoli:"",nove:"",stavajiciZ:"",jine:"",trzba:"",navyseni:"",marze:"",trzbaMonika:"",trzbaMyrda:""};
-function Shrnuti({uid}){
+function Shrnuti({uid,city,camp,rows}){
   const [items,setItems]=useState(null);
   const [showForm,setShowForm]=useState(false);
   const [ed,setEd]=useState(null);
@@ -1114,18 +1209,51 @@ function Shrnuti({uid}){
   const td={padding:"6px 8px",fontSize:10.5,color:DK,whiteSpace:"nowrap"};
   const ff="1 1 0";
   const nInp={...inp,padding:"8px 10px",fontSize:13};
+  // 🟢 Live řádek: aktuálně rozjeté město (jen náhled — není v archivu ani souhrnech)
+  const live=(()=>{
+    if(!city||!camp||!rows||!camp.startDate)return null;
+    const today=new Date();const tISO=today.toISOString().slice(0,10);
+    const dc=Math.max(0,Math.round((today-new Date(camp.startDate))/86400000));
+    const wd=countWorkDays(camp.startDate,tISO);
+    const trz=rows.reduce((s,r)=>s+(parseFloat(r.price)||0),0);
+    const kB=rows.reduce((s,r)=>s+(r.type==="K"?(parseFloat(r.kBonus)||0):0),0);
+    const mar=Math.round(trz*((camp.marginPct||0)/100))+kB;
+    const nav=rows.reduce((s,r)=>s+((r.existingPrice&&r.price)?(parseFloat(r.price)-parseFloat(r.existingPrice)):0),0);
+    const nN=rows.filter(r=>r.type==="N").length,nSZ=rows.filter(r=>r.type==="S"||r.type==="Z").length,nJ=rows.filter(r=>r.type==="J"||r.type==="K").length;
+    const revF=rows.reduce((s,r)=>s+(r.signedBy==="F"?(parseFloat(r.price)||0):0),0);
+    const revM=rows.reduce((s,r)=>s+(r.signedBy==="M"?(parseFloat(r.price)||0):0),0);
+    return{mesto:city.name||"",dc,wd,pm:camp.marginPct||0,poli:rows.length,nN,nSZ,nJ,trz,nav,mar,perDay:wd?Math.round(mar/wd):0,revF,revM,od:camp.startDate};
+  })();
   return(<div style={{padding:"16px"}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:13}}><h2 style={{margin:0,fontSize:17,fontWeight:900,color:DK}}>🗂️ <span style={{color:OR}}>Shrnutí</span></h2><button onClick={openNew} style={{background:"transparent",border:`1.5px solid ${OR}`,color:OR,padding:"5px 10px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer"}}>+ Historické město</button></div>
 
     <h3 style={{margin:"0 0 8px",fontSize:13,color:DK}}>📚 Archiv měst</h3>
-    {!items?<div style={{textAlign:"center",color:"#ccc",padding:30}}>Načítám...</div>:items.length===0?
+    {!items?<div style={{textAlign:"center",color:"#ccc",padding:30}}>Načítám...</div>:(items.length===0&&!live)?
       <div style={{background:"white",borderRadius:12,padding:20,textAlign:"center",color:"#ccc",fontSize:13,marginBottom:20}}>Zatím žádná uzavřená ani historická města.</div>:
       <div style={{background:"white",borderRadius:12,overflow:"auto",boxShadow:"0 2px 8px rgba(0,0,0,0.06)",marginBottom:20,WebkitOverflowScrolling:"touch"}}>
         <table style={{borderCollapse:"collapse",width:"100%"}}>
           <thead><tr style={{background:DK}}>
             <th style={th}>Město</th><th style={th}>Ed.</th><th style={th}>Dní</th><th style={th}>Prac.</th><th style={th}>%m</th><th style={th}>Polí</th><th style={th}>N</th><th style={th}>S+Z</th><th style={th}>J</th><th style={{...th,color:"#fdba74"}}>Tržba</th><th style={{...th,color:"#fca5a5"}}>Navýš.</th><th style={{...th,color:"#86efac"}}>Marže</th><th style={th}>ø/den</th><th style={{...th,color:"#f9a8d4"}}>♀️</th><th style={{...th,color:"#93c5fd"}}>♂️</th><th style={th}>Od–Do</th><th style={th}></th>
           </tr></thead>
-          <tbody>{items.map((it,i)=>{
+          <tbody>{live&&(<tr style={{background:"#f0fdf4",borderBottom:"2px solid #86efac"}}>
+            <td style={{...td,fontWeight:800,color:GR}}>🟢 {live.mesto} <span style={{fontWeight:400,fontSize:9,color:"#4ade80"}}>běží</span></td>
+            <td style={td}>{new Date().getFullYear()}</td>
+            <td style={td}>{live.dc}</td>
+            <td style={{...td,color:OR,fontWeight:700}}>{live.wd}</td>
+            <td style={td}>{live.pm}%</td>
+            <td style={td}>{live.poli}</td>
+            <td style={{...td,color:"#16a34a"}}>{live.nN}</td>
+            <td style={{...td,color:"#92400e"}}>{live.nSZ}</td>
+            <td style={{...td,color:"#1d4ed8"}}>{live.nJ}</td>
+            <td style={{...td,color:OR,fontWeight:700}}>{live.trz.toLocaleString("cs")}</td>
+            <td style={{...td,color:"#c2410c"}}>{live.nav.toLocaleString("cs")}</td>
+            <td style={{...td,color:GR,fontWeight:700}}>{live.mar.toLocaleString("cs")}</td>
+            <td style={td}>{live.perDay.toLocaleString("cs")}</td>
+            <td style={{...td,color:"#be185d"}}>{live.revF.toLocaleString("cs")}</td>
+            <td style={{...td,color:"#1d4ed8"}}>{live.revM.toLocaleString("cs")}</td>
+            <td style={{...td,color:"#bbb"}}>{fmtDate(live.od)}–dnes</td>
+            <td style={td}></td>
+          </tr>)}{items.map((it,i)=>{
             const perDay=it.pracovnichDni?Math.round((it.marze||0)/it.pracovnichDni):0;
             return(<tr key={it.id} onClick={()=>openEdit(it)} style={{background:i%2?"#faf8f5":"white",borderBottom:"1px solid #f0eee9",cursor:"pointer"}}>
               <td style={{...td,fontWeight:700}}>{it.historic?"🕰️ ":"🏁 "}{it.mesto||"—"}</td>
