@@ -55,23 +55,24 @@ const inp={width:"100%",padding:"12px 14px",border:"1.5px solid #e5e7eb",borderR
 const FB_PROJECT="pf-tahak-tahax67";
 
 // ── Google Drive přes GIS (fáze E1) — vzor z GOORN (google-drive-integrace-postup-a-reseni.md) ──
-const GIS_CLIENT_ID=""; // DOPLNIT: Web client ID z Firebase Console → Authentication → Sign-in method → Google → Web SDK configuration
+const GIS_CLIENT_ID="762017059667-pesntvlqijpi5djroeld3hcoh1s2n61k.apps.googleusercontent.com"; // Web client ID (Firebase → Auth → Google → Web SDK configuration)
 const DRIVE_TOKEN_KEY="pf_drive_token",DRIVE_TOKEN_TS_KEY="pf_drive_token_ts",DRIVE_TOKEN_MAX_AGE=55*60*1000;
-var _gisTokenClient=null;
+var _gisTokenClient=null,_gisOnSuccess=null,_gisOnError=null;
 function saveDriveToken(t){try{if(t){localStorage.setItem(DRIVE_TOKEN_KEY,t);localStorage.setItem(DRIVE_TOKEN_TS_KEY,String(Date.now()));}else{localStorage.removeItem(DRIVE_TOKEN_KEY);localStorage.removeItem(DRIVE_TOKEN_TS_KEY);}}catch(e){}}
 function loadDriveToken(){try{const t=localStorage.getItem(DRIVE_TOKEN_KEY),ts=localStorage.getItem(DRIVE_TOKEN_TS_KEY);if(!t||!ts)return null;if(Date.now()-parseInt(ts,10)>DRIVE_TOKEN_MAX_AGE)return null;return t;}catch(e){return null;}}
 function requestDriveAccess(onSuccess,onError){
-  if(!GIS_CLIENT_ID){onError("Disk zatím není nakonfigurován (chybí Client ID v kódu).");return;}
-  if(!window.google||!window.google.accounts||!window.google.accounts.oauth2){onError("Přihlašovací knihovna Googlu se ještě nenahrála. Zkus to za chvíli znovu.");return;}
+  _gisOnSuccess=onSuccess;_gisOnError=onError;
+  if(!GIS_CLIENT_ID){_gisOnError&&_gisOnError("Disk zatím není nakonfigurován (chybí Client ID v kódu).");return;}
+  if(!window.google||!window.google.accounts||!window.google.accounts.oauth2){_gisOnError&&_gisOnError("Přihlašovací knihovna Googlu se ještě nenahrála. Zkus to za chvíli znovu.");return;}
   if(!_gisTokenClient){
     _gisTokenClient=window.google.accounts.oauth2.initTokenClient({
       client_id:GIS_CLIENT_ID,
       scope:"https://www.googleapis.com/auth/drive.file",
-      callback:function(tr){if(tr&&tr.access_token){saveDriveToken(tr.access_token);onSuccess(tr.access_token);}else{onError("Disk se nepřipojil (chybí přístupový token).");}},
+      callback:function(tr){if(tr&&tr.access_token){saveDriveToken(tr.access_token);_gisOnSuccess&&_gisOnSuccess(tr.access_token);}else{_gisOnError&&_gisOnError("Disk se nepřipojil (chybí přístupový token).");}},
       error_callback:function(err){
         if(err&&err.type==="popup_closed"){/* uživatel zavřel okno sám — není chyba */}
-        else if(err&&err.type==="popup_failed_to_open"){onError("Prohlížeč zablokoval okno přihlášení. Povol vyskakovací okna a zkus znovu.");}
-        else{onError("Přihlášení k Disku selhalo.");}
+        else if(err&&err.type==="popup_failed_to_open"){_gisOnError&&_gisOnError("Prohlížeč zablokoval okno přihlášení. Povol vyskakovací okna a zkus znovu.");}
+        else{_gisOnError&&_gisOnError("Přihlášení k Disku selhalo.");}
       }
     });
   }
@@ -824,6 +825,7 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
 // ── VIZITKA ───────────────────────────────────────────────────
 function Vizitka({rows,camp,totalRev,cityName,sv,posterImg,onSavePosterImg}){
   const [eRid,setERid]=useState(null);const [rd,setRd]=useState({});
+  const [driveBusy,setDriveBusy]=useState(false);
   const [eCamp,setECamp]=useState(false);const [cd,setCd]=useState({...camp});
   const [editSum,setEditSum]=useState(false);const [sumTmp,setSumTmp]=useState(camp.summary||"");
   const nQ=rows.filter(r=>r.type==="?"||!r.type).length,nV=rows.filter(r=>r.type==="V").length,nJ=rows.filter(r=>r.type==="J").length,nN=rows.filter(r=>r.type==="N").length,nS=rows.filter(r=>r.type==="S").length,nZ=rows.filter(r=>r.type==="Z").length,nK=rows.filter(r=>r.type==="K").length;const nGfxRed=rows.filter(r=>(r.gfxStatus||"red")==="red").length,nGfxOrange=rows.filter(r=>r.gfxStatus==="orange").length,nGfxGreen=rows.filter(r=>r.gfxStatus==="green").length;
@@ -1029,16 +1031,43 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
       const dim=dimOf(rd.label||rd.id);
       const custName=subjClean((rd.advertiser||"").split("/")[0].replace(/_/g," "),false);
       const subj=`${subjClean(cityName,true)} č. ${rd.label||rd.id}${dim?` (${dim})`:""}${custName?` ${custName}`:""}`.trim();
+      const files=rd.driveFiles||[];
+      const filesTxt=files.length?"\n\nSoubory (Google Disk):\n"+files.map(f=>f.url).join("\n"):"";
       const btnS={width:"100%",textAlign:"left",padding:"8px 10px",borderRadius:8,border:"1.5px solid #bae6fd",background:"white",color:"#0369a1",fontWeight:600,fontSize:11.5,cursor:"pointer"};
+      function pickAndUpload(){
+        const inp=document.createElement("input");inp.type="file";inp.accept="image/*,application/pdf";
+        inp.onchange=()=>{
+          const file=inp.files&&inp.files[0];if(!file)return;
+          const doUp=async(t)=>{setDriveBusy(true);try{
+              const f=await driveUpload(t,file,`${subj} – ${file.name}`);
+              setRd(p=>({...p,driveFiles:[...(p.driveFiles||[]),{name:file.name,url:f.webViewLink}]}));
+            }catch(e){
+              if(e.status===401){alert("Připojení Disku vypršelo — klepni na Nahrát znovu a přihlas se.");}
+              else if(e.status===403){alert("Disk hlásí 403 — zkontroluj v konzoli: Drive API zapnuté + přidané v restrikci klíče + origins. Token nemažu.");}
+              else{alert("Nahrání na Disk selhalo. Zkus to znovu.");}
+            }finally{setDriveBusy(false);}};
+          const tok=loadDriveToken();
+          if(tok)doUp(tok);else requestDriveAccess(t=>doUp(t),e=>alert("❌ "+e));
+        };
+        inp.click();
+      }
       return(
       <div style={{marginBottom:6,background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:10,padding:10}}>
         <label style={{...lbl,color:"#0369a1",marginBottom:3}}>🎨 E-mail grafikovi <span style={{fontWeight:400,fontSize:10.5,color:"#0ea5e9"}}>Pavel · {GFX_EMAIL}</span></label>
         <div style={{fontSize:10,color:"#7dd3fc",marginBottom:7,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Předmět: {subj}</div>
-        <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
-          {GFX_TEMPLATES.map((t,i)=>(<button key={i} onClick={()=>{window.location.href=mailtoUrl(GFX_EMAIL,subj,t.body+EMAIL_SIGN);}} style={btnS}>{t.label}</button>))}
+        <div style={{marginBottom:8,background:"white",border:"1.5px dashed #7dd3fc",borderRadius:8,padding:8}}>
+          <div style={{fontSize:10.5,fontWeight:700,color:"#0369a1",marginBottom:files.length?6:0}}>📎 Soubory na Disku {files.length?`(${files.length})`:""} <span style={{fontWeight:400,color:"#7dd3fc"}}>— odkazy se vloží do e-mailů</span></div>
+          {files.map((f,i)=>(<div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+            <a href={f.url} target="_blank" rel="noopener" style={{flex:1,fontSize:11,color:"#0369a1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>🔗 {f.name}</a>
+            <button onClick={()=>setRd(p=>({...p,driveFiles:(p.driveFiles||[]).filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"#fca5a5",cursor:"pointer",fontSize:13,padding:0}}>✕</button>
+          </div>))}
+          <button onClick={pickAndUpload} disabled={driveBusy} style={{width:"100%",padding:"7px 0",borderRadius:7,border:"1.5px solid #7dd3fc",background:driveBusy?"#e0f2fe":"white",color:"#0369a1",fontWeight:700,fontSize:11.5,cursor:driveBusy?"wait":"pointer",marginTop:files.length?2:6}}>{driveBusy?"⏳ Nahrávám na Disk…":"📎 Nahrát foto / PDF na Disk"}</button>
         </div>
-        <button onClick={()=>{window.location.href=mailtoUrl("",subj,custTemplate(cityName||"",rd.label||rd.id));}} style={{...btnS,border:"1.5px solid #a7f3d0",color:"#047857"}}>✉️ Zákazníkovi – návrh ke schválení <span style={{fontWeight:400,fontSize:10}}>(adresu doplň v Gmailu)</span></button>
-        <div style={{fontSize:9.5,color:"#93c5fd",marginTop:6}}>Přílohy zatím připoj ručně v Gmailu · Drive odkazy přijdou v další fázi</div>
+        <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
+          {GFX_TEMPLATES.map((t,i)=>(<button key={i} onClick={()=>{window.location.href=mailtoUrl(GFX_EMAIL,subj,t.body+filesTxt+EMAIL_SIGN);}} style={btnS}>{t.label}</button>))}
+        </div>
+        <button onClick={()=>{window.location.href=mailtoUrl("",subj,custTemplate(subjClean(cityName,true),rd.label||rd.id)+filesTxt);}} style={{...btnS,border:"1.5px solid #a7f3d0",color:"#047857"}}>✉️ Zákazníkovi – návrh ke schválení <span style={{fontWeight:400,fontSize:10}}>(adresu doplň v Gmailu)</span></button>
+        <div style={{fontSize:9.5,color:"#93c5fd",marginTop:6}}>Po nahrání souboru nezapomeň modal Uložit — odkazy se ukládají k poli.</div>
       </div>);
     })()}
   </Modal>);
