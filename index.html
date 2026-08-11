@@ -86,7 +86,11 @@ async function driveUpload(token,file,name){
   fd.append("metadata",new Blob([JSON.stringify(meta)],{type:"application/json"}));
   fd.append("file",file);
   const up=await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",{method:"POST",headers:{Authorization:"Bearer "+token},body:fd});
-  if(!up.ok){const e=new Error("Drive upload selhal");e.status=up.status;if(up.status===401)saveDriveToken(null);throw e;}
+  if(!up.ok){
+    let detail="";
+    try{const j=await up.json();detail=(j&&j.error&&j.error.message)||"";}catch(parseErr){}
+    const e=new Error(detail);e.status=up.status;if(up.status===401)saveDriveToken(null);throw e;
+  }
   const f=await up.json();
   try{await fetch("https://www.googleapis.com/drive/v3/files/"+f.id+"/permissions",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({role:"reader",type:"anyone"})});}catch(e){}
   return f;
@@ -1159,8 +1163,8 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
               setRd(p=>({...p,driveFiles:[...(p.driveFiles||[]),{name:file.name,url:f.webViewLink}]}));
             }catch(e){
               if(e.status===401){alert("Připojení Disku vypršelo — klepni na Nahrát znovu a přihlas se.");}
-              else if(e.status===403){alert("Disk hlásí 403 — zkontroluj v konzoli: Drive API zapnuté + přidané v restrikci klíče + origins. Token nemažu.");}
-              else{alert("Nahrání na Disk selhalo. Zkus to znovu.");}
+              else if(e.status===403){alert("Disk hlásí 403 — zkontroluj v konzoli: Drive API zapnuté + přidané v restrikci klíče + origins. Token nemažu.\n\nDetail od Googlu: "+(e.message||"(bez detailu)"));}
+              else{alert("Nahrání na Disk selhalo ("+(e.status?("HTTP "+e.status):"spojení se serverem se nezdařilo")+").\n\nDetail: "+(e.message||"appka nezískala žádnou podrobnost — pravděpodobně síťová chyba")+"\n\nZkus to znovu, a pokud se to bude opakovat, pošli mi přesně tenhle text.");}
             }finally{setDriveBusy(false);}};
           const tok=loadDriveToken();
           if(tok)doUp(tok);else requestDriveAccess(t=>doUp(t),e=>alert("❌ "+e));
