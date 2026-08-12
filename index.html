@@ -82,8 +82,9 @@ function requestDriveAccess(onSuccess,onError){
 }
 // Upload souboru na Drive (multipart) + sdílení "kdokoli s odkazem – prohlížení" → vrací {id, webViewLink}
 // Error handling: 401 = token neplatný (smazat, znovu připojit) · 403 = jiná příčina (Drive API vypnuté / origins) — token NEmazat
-async function driveUpload(token,file,name){
+async function driveUpload(token,file,name,folderId){
   const meta={name:name||file.name||("tahak-"+Date.now()),mimeType:file.type||"application/octet-stream"};
+  if(folderId)meta.parents=[folderId];
   const fd=new FormData();
   fd.append("metadata",new Blob([JSON.stringify(meta)],{type:"application/json"}));
   fd.append("file",file);
@@ -808,6 +809,9 @@ function dimOf(label){const k=String(label||"");if(!k)return "";
   const h=POS_HEIGHT_MM[k];if(h==null)return "";const w=POS_WIDTH_MM[k]!=null?POS_WIDTH_MM[k]:POS_WIDTH_MM[baseOf(k)];return w?`${w}x${h}`:"";}
 // E-maily — "zákazník jako hub" (fáze E1). Šablony: rozmery-a-sablony-v2.md
 const GFX_EMAIL="dzob@seznam.cz";
+const GFX_DRIVE_FOLDER_ID="1l-T7a6Cp9ePRUlkO131mY_Eqdy7ehyh-"; // cílová složka pro soubory k šablonám grafikovi (přejmenované dle šablony/subjektu/města)
+// Sanitizace části názvu souboru pro Disk – odstraní znaky problematické v souborových jménech
+function sanitizeNamePart(s){return String(s||"").replace(/[\\/:*?"<>|]+/g," ").replace(/\s+/g," ").trim();}
 const EMAIL_SIGN="\n\nMonika Řeháčková / Miroslav Kvaček\nOZ Pro-factor";
 const GFX_TEMPLATES=[
   {label:"1️⃣ Nový zákazník – podklady",body:"Ahoj Pavle, posílám podklady od nového zákazníka. Prosím o zpracování grafického návrhu. Díky ☺️"},
@@ -932,6 +936,7 @@ function PosterGrid({rows,onToggle,onEdit,posterImg,onSavePosterImg}){
 function Vizitka({rows,camp,totalRev,cityName,sv,svRow,svRowDel,posterImg,onSavePosterImg}){
   const [eRid,setERid]=useState(null);const [rd,setRd]=useState({});
   const [driveBusy,setDriveBusy]=useState(false);
+  const [expT,setExpT]=useState(null); // rozbalený panel šablony grafikovi (1-5) v modalu Pole
   const [eCamp,setECamp]=useState(false);const [cd,setCd]=useState({...camp});
   const [editSum,setEditSum]=useState(false);const [sumTmp,setSumTmp]=useState(camp.summary||"");
   const nQ=rows.filter(r=>r.type==="?"||!r.type).length,nV=rows.filter(r=>r.type==="V").length,nJ=rows.filter(r=>r.type==="J").length,nN=rows.filter(r=>r.type==="N").length,nS=rows.filter(r=>r.type==="S").length,nZ=rows.filter(r=>r.type==="Z").length,nK=rows.filter(r=>r.type==="K").length;const nGfxRed=rows.filter(r=>(r.gfxStatus||"red")==="red").length,nGfxOrange=rows.filter(r=>r.gfxStatus==="orange").length,nGfxGreen=rows.filter(r=>r.gfxStatus==="green").length;
@@ -1075,7 +1080,7 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
   }
   function toggleGfx(rowId){const r0=rows.find(r=>r.rowId===rowId);if(r0)svRow({...r0,gfxStatus:nextGfx(r0.gfxStatus)});}
   function getByLabel(label){return rows.find(r=>r.label===label);}
-  function openEditByRowId(rowId){const r=rows.find(x=>x.rowId===rowId);if(r){setRd({...r});setERid(r.rowId);}}
+  function openEditByRowId(rowId){const r=rows.find(x=>x.rowId===rowId);if(r){setRd({...r});setERid(r.rowId);setExpT(null);}}
   return(<div style={{padding:"16px 16px 0"}}>
     <h2 style={{margin:"0 0 14px",fontSize:17,fontWeight:900,color:DK}}>Vizitka – <span style={{color:OR}}>Prodaná místa</span></h2>
     <div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:11}}><div style={{fontWeight:800,fontSize:13,color:DK}}>📅 {cityName||"Kampaň"}</div><button onClick={()=>{setCd({...camp});setECamp(true);}} style={{background:"transparent",border:`1.5px solid ${OR}`,color:OR,padding:"4px 9px",borderRadius:7,fontSize:12,fontWeight:600,cursor:"pointer"}}>✏️</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,marginBottom:7}}><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Začátek</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{fmtDate(camp.startDate)}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Konec</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{fmtDate(camp.endDate)}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Dní celkem</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{days||"—"}</div></div><div style={{background:"#fff3e8",borderRadius:8,padding:"8px 5px",border:`1px solid ${OR}33`}}><div style={{fontSize:9.5,color:OR,fontWeight:600}}>Pracovních dní</div><div style={{fontWeight:800,fontSize:11.5,color:OR,marginTop:2}}>{camp.startDate&&camp.endDate?workDays:"—"}</div></div></div>{camp.startDate&&<div style={{display:"flex",alignItems:"center",gap:6,padding:"7px 9px",marginBottom:7,background:"#fbfbfb",borderRadius:8,fontSize:11}}><span style={{color:"#bbb"}}>⏳ Uplynulo:</span><span style={{color:DK,fontWeight:700}}>{elapsedDays} dní celkem</span><span style={{color:"#ddd"}}>·</span><span style={{color:OR,fontWeight:700}}>{elapsedWorkDays} pracovních dní</span></div>}<div style={{background:"#f9f9f9",borderRadius:8,padding:9,marginBottom:11}}><div style={{fontSize:10,color:"#bbb",marginBottom:5}}>Inzeráty</div><div style={{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}}>{nQ>0&&<span style={{background:"#fed7aa",color:"#9a3412",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nQ} ?</span>}{nV>0&&<span style={{background:"#f5f5f5",color:"#6b7280",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10,border:"1px solid #d1d5db"}}>{nV} V</span>}{nN>0&&<span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nN} N</span>}{nS>0&&<span style={{background:"#fef3c7",color:"#92400e",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nS} S</span>}{nZ>0&&<span style={{background:"#e7d2b8",color:"#78350f",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nZ} Z</span>}{nJ>0&&<span style={{background:"#dbeafe",color:"#1d4ed8",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nJ} J</span>}{nK>0&&<span style={{background:"#e9d5ff",color:"#7e22ce",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nK} K</span>}<span style={{color:"#ccc",margin:"0 2px"}}>·</span><span style={{background:"#fef2f2",color:"#dc2626",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🔴 {nGfxRed}</span><span style={{background:"#fff7ed",color:"#c2410c",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🟠 {nGfxOrange}</span><span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🟢 {nGfxGreen}</span></div></div>
@@ -1102,7 +1107,7 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
           <span className="nav-col" style={{fontSize:9.5,color:"#c2410c",fontWeight:500,minWidth:44,flexShrink:0}}>{nav!==null?nav.toLocaleString("cs"):"—"}</span>
           <span style={{fontSize:10,color:DK,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{(row.customerName||row.advertiser)?<>{row.customerName||row.advertiser}{row.customerNote?<span style={{color:"#c9c9c9",fontWeight:400}}> · {row.customerNote}</span>:null}</>:<span style={{color:"#ddd"}}>–</span>}</span>
         </div>
-        <button onClick={()=>{setRd({...row});setERid(row.rowId);}} style={{background:"none",border:"none",color:OR,cursor:"pointer",fontSize:14,padding:0}}>✏️</button>
+        <button onClick={()=>{setRd({...row});setERid(row.rowId);setExpT(null);}} style={{background:"none",border:"none",color:OR,cursor:"pointer",fontSize:14,padding:0}}>✏️</button>
       </div>);})}
       <div style={{display:"grid",gridTemplateColumns:"20px 26px 48px 50px 18px 18px 1fr 22px",gap:2,padding:"9px",background:"#fff8f0",borderTop:`2px solid ${OR}`,alignItems:"center"}}>
         <div style={{fontSize:9,fontWeight:800,color:DK,gridColumn:"1/3",paddingLeft:2}}>CELKEM</div>
@@ -1173,6 +1178,38 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
         };
         inp.click();
       }
+      // Per-šablonové soubory (varianta C, 8/2026): každá z 5 šablon má vlastní seznam souborů
+      // v rd.driveFilesT[tNum] = [{name,url}], nahrávají se do GFX_DRIVE_FOLDER_ID a přejmenují
+      // na "{číslo šablony} {jméno subjektu} {město}[.ext]" (+ " (2)"/" (3)" při víc souborech).
+      // Šablony 1-2 povolují víc souborů, 3-5 max 1 (viz capReached níže).
+      function gfxFileName(tNum,ext,countSoFar){
+        const cityP=sanitizeNamePart(subjClean(cityName,true));
+        const custP=custName||sanitizeNamePart(rd.advertiser)||"";
+        let base=`${tNum} ${custP} ${cityP}`.replace(/\s+/g," ").trim();
+        if(countSoFar>0)base+=` (${countSoFar+1})`;
+        return base+(ext?"."+ext:"");
+      }
+      function uploadForTemplate(tNum){
+        const cur=(rd.driveFilesT&&rd.driveFilesT[tNum])||[];
+        if(tNum>2&&cur.length>=1)return;
+        const inp=document.createElement("input");inp.type="file";inp.accept="image/*,application/pdf";
+        inp.onchange=()=>{
+          const file=inp.files&&inp.files[0];if(!file)return;
+          const doUp=async(t)=>{setDriveBusy(true);try{
+              const ext=(file.name.match(/\.([a-zA-Z0-9]+)$/)||[])[1]||"";
+              const nm=gfxFileName(tNum,ext,cur.length);
+              const f=await driveUpload(t,file,nm,GFX_DRIVE_FOLDER_ID);
+              setRd(p=>{const map={...(p.driveFilesT||{})};map[tNum]=[...(map[tNum]||[]),{name:nm,url:f.webViewLink}];return{...p,driveFilesT:map};});
+            }catch(e){
+              if(e.status===401){alert("Připojení Disku vypršelo — klepni na Nahrát znovu a přihlas se.");}
+              else if(e.status===403){alert("Disk hlásí 403 — zkontroluj v konzoli: Drive API zapnuté + přidané v restrikci klíče + origins. Token nemažu.\n\nDetail od Googlu: "+(e.message||"(bez detailu)"));}
+              else{alert("Nahrání na Disk selhalo ("+(e.status?("HTTP "+e.status):"spojení se serverem se nezdařilo")+").\n\nDetail: "+(e.message||"appka nezískala žádnou podrobnost — pravděpodobně síťová chyba")+"\n\nZkus to znovu, a pokud se to bude opakovat, pošli mi přesně tenhle text.");}
+            }finally{setDriveBusy(false);}};
+          const tok=loadDriveToken();
+          if(tok)doUp(tok);else requestDriveAccess(t=>doUp(t),e=>alert("❌ "+e));
+        };
+        inp.click();
+      }
       return(
       <div style={{marginBottom:6,background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:10,padding:10}}>
         <label style={{...lbl,color:"#0369a1",marginBottom:3}}>🎨 E-mail grafikovi <span style={{fontWeight:400,fontSize:10.5,color:"#0ea5e9"}}>Pavel · {GFX_EMAIL}</span></label>
@@ -1186,7 +1223,31 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
           <button onClick={pickAndUpload} disabled={driveBusy} style={{width:"100%",padding:"7px 0",borderRadius:7,border:"1.5px solid #7dd3fc",background:driveBusy?"#e0f2fe":"white",color:"#0369a1",fontWeight:700,fontSize:11.5,cursor:driveBusy?"wait":"pointer",marginTop:files.length?2:6}}>{driveBusy?"⏳ Nahrávám na Disk…":"📎 Nahrát foto / PDF na Disk"}</button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
-          {GFX_TEMPLATES.map((t,i)=>(<button key={i} onClick={()=>{window.location.href=mailtoUrl(GFX_EMAIL,subj,t.body+filesTxt+EMAIL_SIGN);}} style={btnS}>{t.label}</button>))}
+          {GFX_TEMPLATES.map((t,i)=>{
+            const tNum=i+1;
+            const tFiles=(rd.driveFilesT&&rd.driveFilesT[tNum])||[];
+            const isExp=expT===tNum;
+            const capReached=tNum>2&&tFiles.length>=1;
+            const tFilesTxt=tFiles.length?"\n\nSoubory (Google Disk):\n"+tFiles.map(f=>f.url).join("\n"):"";
+            return(
+              <div key={i}>
+                <div style={{display:"flex",gap:5}}>
+                  <button onClick={()=>{window.location.href=mailtoUrl(GFX_EMAIL,subj,t.body+tFilesTxt+EMAIL_SIGN);}} style={{...btnS,flex:1}}>{t.label}</button>
+                  <button onClick={()=>setExpT(isExp?null:tNum)} style={{width:38,borderRadius:8,border:"1.5px solid #bae6fd",background:tFiles.length?"#e0f2fe":"white",color:"#0369a1",fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0,position:"relative"}}>
+                    📎{tFiles.length?<span style={{position:"absolute",top:-5,right:-5,background:"#0369a1",color:"white",borderRadius:"50%",fontSize:9,fontWeight:700,width:15,height:15,display:"flex",alignItems:"center",justifyContent:"center"}}>{tFiles.length}</span>:null}
+                  </button>
+                </div>
+                {isExp&&<div style={{marginTop:5,background:"white",border:"1.5px dashed #7dd3fc",borderRadius:8,padding:8}}>
+                  {tFiles.map((f,j)=>(<div key={j} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                    <a href={f.url} target="_blank" rel="noopener" style={{flex:1,fontSize:11,color:"#0369a1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>🔗 {f.name}</a>
+                    <button onClick={()=>setRd(p=>{const map={...(p.driveFilesT||{})};map[tNum]=(map[tNum]||[]).filter((_,k)=>k!==j);return{...p,driveFilesT:map};})} style={{background:"none",border:"none",color:"#fca5a5",cursor:"pointer",fontSize:13,padding:0}}>✕</button>
+                  </div>))}
+                  {!capReached&&<button onClick={()=>uploadForTemplate(tNum)} disabled={driveBusy} style={{width:"100%",padding:"6px 0",borderRadius:7,border:"1.5px solid #7dd3fc",background:driveBusy?"#e0f2fe":"white",color:"#0369a1",fontWeight:700,fontSize:11,cursor:driveBusy?"wait":"pointer"}}>{driveBusy?"⏳ Nahrávám…":"📎 Nahrát soubor"}</button>}
+                  {capReached&&<div style={{fontSize:9.5,color:"#94a3b8"}}>Tahle šablona povoluje jen 1 soubor. Smaž ho, chceš-li nahrát jiný.</div>}
+                </div>}
+              </div>
+            );
+          })}
         </div>
         <button onClick={()=>{window.location.href=mailtoUrl(rd.customerEmail||"",subj,custTemplate(subjClean(cityName,true),rd.label||rd.id)+filesTxt);}} style={{...btnS,border:"1.5px solid #a7f3d0",color:"#047857"}}>✉️ Zákazníkovi – návrh ke schválení <span style={{fontWeight:400,fontSize:10}}>{rd.customerEmail?"→ "+rd.customerEmail:"(adresu doplň v Gmailu)"}</span></button>
         <div style={{fontSize:9.5,color:"#93c5fd",marginTop:6}}>Po nahrání souboru nezapomeň modal Uložit — odkazy se ukládají k poli.</div>
