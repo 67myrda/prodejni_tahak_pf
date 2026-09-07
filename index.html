@@ -1397,10 +1397,11 @@ function Shrnuti({uid,city,camp,rows,sv}){
     {camp&&camp.startDate&&camp.endDate&&(()=>{
       const MN=["leden","únor","březen","duben","květen","červen","červenec","srpen","září","říjen","listopad","prosinec"];
       const DOWL=["Po","Út","St","Čt","Pá","So","Ne"];
-      const start=new Date(camp.startDate),end=new Date(camp.endDate);
-      if(isNaN(start)||isNaN(end)||end<start)return null;
+      function localIso(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),dd=String(d.getDate()).padStart(2,"0");return y+"-"+m+"-"+dd;}
+      const start=new Date(camp.startDate);
+      if(isNaN(start))return null;
       const today=new Date();today.setHours(0,0,0,0);
-      const todayIso=today.toISOString().slice(0,10);
+      const todayIso=localIso(today);
       const restSet=new Set(camp.restDays||[]);
       const dotsByDay={};
       (rows||[]).forEach(r=>{if(r.contractDate){(dotsByDay[r.contractDate]=dotsByDay[r.contractDate]||[]).push(r.type);}});
@@ -1409,10 +1410,14 @@ function Shrnuti({uid,city,camp,rows,sv}){
         const next=cur.includes(iso)?cur.filter(d=>d!==iso):[...cur,iso];
         sv("camp",{...camp,restDays:next});
       }
+      // Aktivní rozsah je vždy Začátek → dnešek, NIKDY camp.endDate — to je jen
+      // odhad/plán uzavření města, ne skutečný konec kampaně (ta končí prodejem).
       const months=[];
       let cy=start.getFullYear(),cm=start.getMonth();
-      const ey=end.getFullYear(),em=end.getMonth();
-      while(cy<ey||(cy===ey&&cm<=em)){months.push({y:cy,m:cm});cm++;if(cm>11){cm=0;cy++;}}
+      const ey=today.getFullYear(),em=today.getMonth();
+      if(start<=today){
+        while(cy<ey||(cy===ey&&cm<=em)){months.push({y:cy,m:cm});cm++;if(cm>11){cm=0;cy++;}}
+      }
       return(
         <div style={{background:"white",borderRadius:13,padding:13,marginBottom:14,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
           <div style={{fontSize:13,fontWeight:800,color:DK,marginBottom:3}}>📅 Kalendář kampaně</div>
@@ -1434,13 +1439,12 @@ function Shrnuti({uid,city,camp,rows,sv}){
                   {cells.map((d,ci)=>{
                     if(d===null)return <div key={ci}/>;
                     const dateObj=new Date(y,m,d);
-                    const iso=dateObj.toISOString().slice(0,10);
-                    const inCampaign=iso>=camp.startDate&&iso<=camp.endDate;
+                    const iso=localIso(dateObj);
+                    const inCampaign=iso>=camp.startDate&&iso<=todayIso;
                     const dow=dateObj.getDay();
                     const isWeekend=dow===0||dow===6;
                     const isHol=isCzechHoliday(dateObj);
-                    const isPastOrToday=iso<=todayIso;
-                    const interactive=inCampaign&&!isWeekend&&!isHol&&isPastOrToday;
+                    const interactive=inCampaign&&!isWeekend&&!isHol;
                     const isRest=restSet.has(iso);
                     let bg="transparent",txtColor="#ccc";
                     if(inCampaign){
