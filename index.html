@@ -726,7 +726,7 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
       {tab==="dashboard"&&cityFull&&qb&&intro!==null&&<Dashboard city={cityFull} qb={qb} intro={intro} onNav={nav} saveCity={saveCity} sv={sv}/>}
       {tab==="prezentace"&&texts&&args&&<Prezentace texts={texts} args={args} metrics={metrics} objs={objs} prices={prices} csize={csize} sv={sv}/>}
       {tab==="vizitka"&&rows&&camp&&<Vizitka rows={rows} camp={camp} totalRev={totalRev} cityName={city?.name} sv={sv} svRow={svRow} svRowDel={svRowDel} posterImg={cityImgs.posterImg} onSavePosterImg={(img)=>saveCity({...cityFull,posterImg:img})}/>}
-      {tab==="shrnuti"&&<Shrnuti uid={uid} city={city} camp={camp} rows={rows}/>}
+      {tab==="shrnuti"&&<Shrnuti uid={uid} city={city} camp={camp} rows={rows} sv={sv}/>}
       {tab==="nastaveni"&&<Nastaveni me={me} city={city} camp={camp} rows={rows} closeCity={closeCity}/>}
       {tab==="admin"&&<Admin me={me} users={users} upUsers={upUsers} city={city} camp={camp} rows={rows} closeCity={closeCity}/>}
     </main>
@@ -945,6 +945,8 @@ function Vizitka({rows,camp,totalRev,cityName,sv,svRow,svRowDel,posterImg,onSave
   const todayStr=new Date().toISOString().slice(0,10);
   const elapsedDays=camp.startDate?Math.max(0,Math.round((new Date(todayStr)-new Date(camp.startDate))/86400000)):0;
   const elapsedWorkDays=camp.startDate?countWorkDays(camp.startDate,todayStr):0;
+  const restCount=(camp.restDays||[]).filter(d=>d>=camp.startDate&&d<=todayStr).length;
+  const workedCount=Math.max(0,elapsedWorkDays-restCount);
   const totalKBonus=rows.reduce((s,r)=>s+(r.type==="K"?(parseFloat(r.kBonus)||0):0),0);
   const margin=Math.round(totalRev*(camp.marginPct/100))+totalKBonus;
   const minRevNum=camp.minRevenue?parseFloat(camp.minRevenue):null;
@@ -1083,7 +1085,7 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
   function openEditByRowId(rowId){const r=rows.find(x=>x.rowId===rowId);if(r){setRd({...r});setERid(r.rowId);setExpT(null);}}
   return(<div style={{padding:"16px 16px 0"}}>
     <h2 style={{margin:"0 0 14px",fontSize:17,fontWeight:900,color:DK}}>Vizitka – <span style={{color:OR}}>Prodaná místa</span></h2>
-    <div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:11}}><div style={{fontWeight:800,fontSize:13,color:DK}}>📅 {cityName||"Kampaň"}</div><button onClick={()=>{setCd({...camp});setECamp(true);}} style={{background:"transparent",border:`1.5px solid ${OR}`,color:OR,padding:"4px 9px",borderRadius:7,fontSize:12,fontWeight:600,cursor:"pointer"}}>✏️</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,marginBottom:7}}><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Začátek</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{fmtDate(camp.startDate)}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Konec</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{fmtDate(camp.endDate)}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Dní celkem</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{days||"—"}</div></div><div style={{background:"#fff3e8",borderRadius:8,padding:"8px 5px",border:`1px solid ${OR}33`}}><div style={{fontSize:9.5,color:OR,fontWeight:600}}>Pracovních dní</div><div style={{fontWeight:800,fontSize:11.5,color:OR,marginTop:2}}>{camp.startDate&&camp.endDate?workDays:"—"}</div></div></div>{camp.startDate&&<div style={{display:"flex",alignItems:"center",gap:6,padding:"7px 9px",marginBottom:7,background:"#fbfbfb",borderRadius:8,fontSize:11}}><span style={{color:"#bbb"}}>⏳ Uplynulo:</span><span style={{color:DK,fontWeight:700}}>{elapsedDays} dní celkem</span><span style={{color:"#ddd"}}>·</span><span style={{color:OR,fontWeight:700}}>{elapsedWorkDays} pracovních dní</span></div>}<div style={{background:"#f9f9f9",borderRadius:8,padding:9,marginBottom:11}}><div style={{fontSize:10,color:"#bbb",marginBottom:5}}>Inzeráty</div><div style={{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}}>{nQ>0&&<span style={{background:"#fed7aa",color:"#9a3412",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nQ} ?</span>}{nV>0&&<span style={{background:"#f5f5f5",color:"#6b7280",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10,border:"1px solid #d1d5db"}}>{nV} V</span>}{nN>0&&<span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nN} N</span>}{nS>0&&<span style={{background:"#fef3c7",color:"#92400e",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nS} S</span>}{nZ>0&&<span style={{background:"#e7d2b8",color:"#78350f",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nZ} Z</span>}{nJ>0&&<span style={{background:"#dbeafe",color:"#1d4ed8",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nJ} J</span>}{nK>0&&<span style={{background:"#e9d5ff",color:"#7e22ce",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nK} K</span>}<span style={{color:"#ccc",margin:"0 2px"}}>·</span><span style={{background:"#fef2f2",color:"#dc2626",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🔴 {nGfxRed}</span><span style={{background:"#fff7ed",color:"#c2410c",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🟠 {nGfxOrange}</span><span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🟢 {nGfxGreen}</span></div></div>
+    <div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:11}}><div style={{fontWeight:800,fontSize:13,color:DK}}>📅 {cityName||"Kampaň"}</div><button onClick={()=>{setCd({...camp});setECamp(true);}} style={{background:"transparent",border:`1.5px solid ${OR}`,color:OR,padding:"4px 9px",borderRadius:7,fontSize:12,fontWeight:600,cursor:"pointer"}}>✏️</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,marginBottom:7}}><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Začátek</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{fmtDate(camp.startDate)}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Konec</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{fmtDate(camp.endDate)}</div></div><div style={{background:"#f9f9f9",borderRadius:8,padding:"8px 5px"}}><div style={{fontSize:9.5,color:"#bbb"}}>Dní celkem</div><div style={{fontWeight:700,fontSize:11.5,color:DK,marginTop:2}}>{days||"—"}</div></div><div style={{background:"#fff3e8",borderRadius:8,padding:"8px 5px",border:`1px solid ${OR}33`}}><div style={{fontSize:9.5,color:OR,fontWeight:600}}>Pracovních dní</div><div style={{fontWeight:800,fontSize:11.5,color:OR,marginTop:2}}>{camp.startDate&&camp.endDate?workDays:"—"}</div></div></div>{camp.startDate&&<div style={{padding:"7px 9px",marginBottom:7,background:"#fbfbfb",borderRadius:8,fontSize:11}}><div style={{display:"flex",alignItems:"center",gap:6}}><span style={{color:"#bbb"}}>⏳ Uplynulo:</span><span style={{color:DK,fontWeight:700}}>{elapsedDays} dní celkem</span><span style={{color:"#ddd"}}>·</span><span style={{color:OR,fontWeight:700}}>{elapsedWorkDays} pracovních dní</span></div><div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}><span style={{color:"#bbb"}}>✅ Odpracováno:</span><span style={{color:"#6b7280",fontWeight:700}}>{workedCount} dní</span></div></div>}<div style={{background:"#f9f9f9",borderRadius:8,padding:9,marginBottom:11}}><div style={{fontSize:10,color:"#bbb",marginBottom:5}}>Inzeráty</div><div style={{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}}>{nQ>0&&<span style={{background:"#fed7aa",color:"#9a3412",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nQ} ?</span>}{nV>0&&<span style={{background:"#f5f5f5",color:"#6b7280",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10,border:"1px solid #d1d5db"}}>{nV} V</span>}{nN>0&&<span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nN} N</span>}{nS>0&&<span style={{background:"#fef3c7",color:"#92400e",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nS} S</span>}{nZ>0&&<span style={{background:"#e7d2b8",color:"#78350f",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nZ} Z</span>}{nJ>0&&<span style={{background:"#dbeafe",color:"#1d4ed8",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nJ} J</span>}{nK>0&&<span style={{background:"#e9d5ff",color:"#7e22ce",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{nK} K</span>}<span style={{color:"#ccc",margin:"0 2px"}}>·</span><span style={{background:"#fef2f2",color:"#dc2626",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🔴 {nGfxRed}</span><span style={{background:"#fff7ed",color:"#c2410c",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🟠 {nGfxOrange}</span><span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>🟢 {nGfxGreen}</span></div></div>
     <PosterGrid rows={rows} onToggle={toggleGfx} onEdit={openEditByRowId} posterImg={posterImg} onSavePosterImg={onSavePosterImg}/>
     <div style={{background:"#eef6ff",borderRadius:10,padding:12,marginBottom:9,border:"1.5px solid #bfdbfe"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:camp.summary?8:0}}><div style={{fontSize:11,fontWeight:700,color:"#1d4ed8"}}>📝 Shrnutí města</div><button onClick={()=>{setSumTmp(camp.summary||"");setEditSum(true);}} style={{background:"transparent",border:"1.5px solid #1d4ed8",color:"#1d4ed8",padding:"3px 9px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer"}}>✏️ Upravit</button></div>{camp.summary?<div style={{fontSize:13,color:"#1e3a8a",lineHeight:1.6,whiteSpace:"pre-wrap",overflowWrap:"break-word",wordBreak:"break-word"}}>{camp.summary}</div>:<div style={{fontSize:12,color:"#93c5fd",fontStyle:"italic"}}>Klepni na Upravit pro přidání poznámky...</div>}</div>
     <div style={{background:"#fff8f0",borderRadius:10,padding:12,marginBottom:9}}><div style={{fontSize:10,color:"#bbb"}}>Celková tržba</div><div style={{fontSize:24,fontWeight:900,color:OR}}>{totalRev.toLocaleString("cs")} Kč</div>{minRevNum!==null&&<div style={{fontSize:11,color:belowMin?"#dc2626":"#16a34a",fontWeight:600,marginTop:4}}>{belowMin?`Zbývá do minima: ${remainingToMin.toLocaleString("cs")} Kč`:"✓ Minimální tržba splněna"}</div>}</div>
@@ -1262,7 +1264,7 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
 
 // ── SOUBORY ───────────────────────────────────────────────────
 const HIST_EMPTY={mesto:"",edice:new Date().getFullYear(),datumOd:"",datumDo:"",procentoMarze:20,celkemPoli:"",nove:"",stavajiciZ:"",jine:"",trzba:"",navyseni:"",marze:"",trzbaMonika:"",trzbaMyrda:""};
-function Shrnuti({uid,city,camp,rows}){
+function Shrnuti({uid,city,camp,rows,sv}){
   const [items,setItems]=useState(null);
   const [showForm,setShowForm]=useState(false);
   const [ed,setEd]=useState(null);
@@ -1391,6 +1393,86 @@ function Shrnuti({uid,city,camp,rows}){
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{Object.keys(agg.byYear).sort().reverse().map(y=>(<span key={y} style={{background:"#fff8f0",padding:"3px 9px",borderRadius:6,fontSize:12,fontWeight:700,color:OR}}>{y}: {agg.byYear[y]}</span>))}</div>
     </div>
     </>)}
+
+    {camp&&camp.startDate&&camp.endDate&&(()=>{
+      const MN=["leden","únor","březen","duben","květen","červen","červenec","srpen","září","říjen","listopad","prosinec"];
+      const DOWL=["Po","Út","St","Čt","Pá","So","Ne"];
+      const start=new Date(camp.startDate),end=new Date(camp.endDate);
+      if(isNaN(start)||isNaN(end)||end<start)return null;
+      const today=new Date();today.setHours(0,0,0,0);
+      const todayIso=today.toISOString().slice(0,10);
+      const restSet=new Set(camp.restDays||[]);
+      const dotsByDay={};
+      (rows||[]).forEach(r=>{if(r.contractDate){(dotsByDay[r.contractDate]=dotsByDay[r.contractDate]||[]).push(r.type);}});
+      function toggleRest(iso){
+        const cur=camp.restDays||[];
+        const next=cur.includes(iso)?cur.filter(d=>d!==iso):[...cur,iso];
+        sv("camp",{...camp,restDays:next});
+      }
+      const months=[];
+      let cy=start.getFullYear(),cm=start.getMonth();
+      const ey=end.getFullYear(),em=end.getMonth();
+      while(cy<ey||(cy===ey&&cm<=em)){months.push({y:cy,m:cm});cm++;if(cm>11){cm=0;cy++;}}
+      return(
+        <div style={{background:"white",borderRadius:13,padding:13,marginBottom:14,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+          <div style={{fontSize:13,fontWeight:800,color:DK,marginBottom:3}}>📅 Kalendář kampaně</div>
+          <div style={{fontSize:10,color:"#aaa",marginBottom:10}}>Tečky = uzavřené obchody (barva dle typu) · klepnutím na den označíš, že jsi ten den skutečně nepracoval (výchozí je odpracováno)</div>
+          {months.map(({y,m},mi)=>{
+            let firstDow=new Date(y,m,1).getDay();firstDow=firstDow===0?6:firstDow-1;
+            const daysInMonth=new Date(y,m+1,0).getDate();
+            const cells=[];
+            for(let i=0;i<firstDow;i++)cells.push(null);
+            for(let d=1;d<=daysInMonth;d++)cells.push(d);
+            while(cells.length%7!==0)cells.push(null);
+            return(
+              <div key={mi} style={{marginBottom:14}}>
+                <div style={{fontSize:11.5,fontWeight:700,color:OR,marginBottom:5,textTransform:"capitalize"}}>{MN[m]} {y}</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:3}}>
+                  {DOWL.map(dl=>(<div key={dl} style={{fontSize:8.5,color:"#bbb",textAlign:"center",fontWeight:700}}>{dl}</div>))}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+                  {cells.map((d,ci)=>{
+                    if(d===null)return <div key={ci}/>;
+                    const dateObj=new Date(y,m,d);
+                    const iso=dateObj.toISOString().slice(0,10);
+                    const inCampaign=iso>=camp.startDate&&iso<=camp.endDate;
+                    const dow=dateObj.getDay();
+                    const isWeekend=dow===0||dow===6;
+                    const isHol=isCzechHoliday(dateObj);
+                    const isPastOrToday=iso<=todayIso;
+                    const interactive=inCampaign&&!isWeekend&&!isHol&&isPastOrToday;
+                    const isRest=restSet.has(iso);
+                    let bg="transparent",txtColor="#ccc";
+                    if(inCampaign){
+                      txtColor="#555";
+                      if(interactive){bg=isRest?"#efece6":"#a39c8c";if(!isRest)txtColor="white";}
+                      else bg="#faf8f5";
+                    }
+                    const dots=dotsByDay[iso]||[];
+                    return(
+                      <div key={ci} onClick={()=>{if(interactive)toggleRest(iso);}}
+                        style={{minHeight:34,borderRadius:6,background:bg,cursor:interactive?"pointer":"default",
+                          display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",padding:"2px 0",
+                          border:iso===todayIso?`1.5px solid ${OR}`:"1px solid transparent"}}>
+                        <div style={{fontSize:9.5,fontWeight:700,color:txtColor}}>{d}</div>
+                        <div style={{display:"flex",gap:1,flexWrap:"wrap",justifyContent:"center",marginTop:1}}>
+                          {dots.map((t,di)=>(<div key={di} style={{width:5,height:5,borderRadius:"50%",background:(TYPES[t]||{}).color||"#999"}}/>))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:9,color:"#999",marginTop:2}}>
+            <span><span style={{display:"inline-block",width:8,height:8,borderRadius:2,background:"#a39c8c",marginRight:3,verticalAlign:"middle"}}/>odpracováno</span>
+            <span><span style={{display:"inline-block",width:8,height:8,borderRadius:2,background:"#efece6",border:"1px solid #ddd",marginRight:3,verticalAlign:"middle"}}/>volno</span>
+            {Object.keys(TYPES).map(t=>(<span key={t}><span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:TYPES[t].color,marginRight:3,verticalAlign:"middle"}}/>{TYPES[t].label}</span>))}
+          </div>
+        </div>
+      );
+    })()}
 
     {showForm&&<Modal title={ed==="new"?"+ Historické město":"Upravit záznam"} onClose={()=>setShowForm(false)} onSave={saveForm} extraHeader={ed!=="new"?<button onClick={()=>{delItem(ed);setShowForm(false);}} style={{background:"#fef2f2",border:"1.5px solid #fca5a5",color:"#dc2626",padding:"3px 9px",borderRadius:7,fontSize:12,cursor:"pointer",fontWeight:700}}>🗑️</button>:null}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:11}}>
