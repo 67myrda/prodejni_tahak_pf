@@ -661,12 +661,12 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
     const wd=countWorkDays(camp.startDate,effEnd);
     let dc=0;if(camp.startDate&&effEnd)dc=Math.max(0,Math.round((new Date(effEnd)-new Date(camp.startDate))/86400000));
     const totalRevC=rows.reduce((s,r)=>s+(parseFloat(r.price)||0),0);
-    const totalKBonusC=rows.reduce((s,r)=>s+(r.type==="K"?(parseFloat(r.kBonus)||0):0),0);
-    const marginC=Math.round(totalRevC*((camp.marginPct||0)/100))+totalKBonusC;
+    const totalKBonusC=rows.reduce((s,r)=>s+kBonusOf(r),0);
+    const marginC=Math.round(marginExact(rows,(camp.marginPct||0)/100));
     const totalNavC=rows.reduce((s,r)=>s+((r.existingPrice&&r.price)?(parseFloat(r.price)-parseFloat(r.existingPrice)):0),0);
     const nNc=rows.filter(r=>r.type==="N").length;
     const nSZc=rows.filter(r=>r.type==="S"||r.type==="Z").length;
-    const nJc=rows.filter(r=>r.type==="J"||r.type==="K").length;
+    const nJc=rows.filter(r=>r.type==="J").length;
     const revFc=rows.reduce((s,r)=>s+(r.signedBy==="F"?(parseFloat(r.price)||0):0),0);
     const revMc=rows.reduce((s,r)=>s+(r.signedBy==="M"?(parseFloat(r.price)||0):0),0);
     const countFc=rows.filter(r=>r.signedBy==="F").length;
@@ -820,6 +820,11 @@ const MANAGER_WA_PHONE="420603758487"; // Niki — čtvrteční resumé
 // ── FAKTURY (fáze F2, 11/2026) ────────────────────────────────
 // Údaje dodavatelů + číselné řady leží v Firestore pf_config/invoice (za přihlášením),
 // NE v kódu — repo je veřejné. Odběratel (Pro-Factor) je veřejný údaj z ARES.
+// ── Marže: J = práce jiného OZ (do tržby plakátu ano, marže 0 Kč); K = kontrolka, pevně 1000 Kč bez ohledu na cenu pole ──
+const K_BONUS=1000;
+const isMarginRow=r=>r.type!=="J"&&r.type!=="K";
+const kBonusOf=r=>r.type==="K"?K_BONUS:0;
+function marginExact(rows,pct,who){return rows.reduce((s,r)=>(!who||r.signedBy===who)?s+(isMarginRow(r)?(parseFloat(r.price)||0)*pct:0)+kBonusOf(r):s,0);}
 const INV_DOC="pf_config/invoice";
 const INV_CUSTOMER_DEF={name:"PRO-FACTOR cz, s.r.o.",street:"Revoluční 62",city:"544 01 Dvůr Králové nad Labem",ico:"26013509",dic:"CZ26013509"};
 const INV_PREFIX={F:"PFO",M:"PFY"};
@@ -842,10 +847,7 @@ function addMonthsIso(iso,n){const [y,m,d]=iso.split("-").map(Number);const last
 function invoiceAmounts(rows,camp){
   const pct=(parseFloat(camp.marginPct)||0)/100;
   const sum=(fn)=>rows.reduce((s,r)=>s+fn(r),0);
-  const price=r=>parseFloat(r.price)||0,kb=r=>r.type==="K"?(parseFloat(r.kBonus)||0):0;
-  const exF=sum(r=>r.signedBy==="F"?price(r)*pct+kb(r):0);
-  const exM=sum(r=>r.signedBy==="M"?price(r)*pct+kb(r):0);
-  const exAll=sum(r=>price(r)*pct+kb(r));
+  const exF=marginExact(rows,pct,"F"),exM=marginExact(rows,pct,"M"),exAll=marginExact(rows,pct);
   return{F:round2(exF*0.75),M:round2(exM*0.75),P2:round2(exAll*0.25)};
 }
 // Proč (zatím) nelze vystavit — prázdné pole = lze
@@ -853,7 +855,7 @@ function invoiceBlockers(rows){
   const out=[];
   const nV=rows.filter(r=>r.type==="V").length;
   if(nV)out.push(nV+"× pole ve stavu Volné (V) — faktury jdou vystavit až po prodeji všech polí.");
-  const noSign=rows.filter(r=>(parseFloat(r.price)||parseFloat(r.kBonus))&&r.signedBy!=="F"&&r.signedBy!=="M").map(r=>r.label||r.id);
+  const noSign=rows.filter(r=>(r.type==="K"||(isMarginRow(r)&&parseFloat(r.price)))&&r.signedBy!=="F"&&r.signedBy!=="M").map(r=>r.label||r.id);
   if(noSign.length)out.push("Bez ♀️/♂️ (kdo podepsal): pole "+noSign.join(", ")+" — bez toho nejde rozdělit marže.");
   return out;
 }
@@ -1073,8 +1075,8 @@ function Vizitka({rows,camp,totalRev,cityName,sv,svRow,svRowDel,posterImg,onSave
   const elapsedWorkDays=camp.startDate?countWorkDays(camp.startDate,todayStr):0;
   const restCount=(camp.restDays||[]).filter(d=>d>=camp.startDate&&d<=todayStr).length;
   const workedCount=Math.max(0,elapsedWorkDays-restCount);
-  const totalKBonus=rows.reduce((s,r)=>s+(r.type==="K"?(parseFloat(r.kBonus)||0):0),0);
-  const margin=Math.round(totalRev*(camp.marginPct/100))+totalKBonus;
+  const totalKBonus=rows.reduce((s,r)=>s+kBonusOf(r),0);
+  const margin=Math.round(marginExact(rows,(camp.marginPct||0)/100));
   const minRevNum=camp.minRevenue?parseFloat(camp.minRevenue):null;
   const remainingToMin=minRevNum!==null?Math.max(0,minRevNum-totalRev):null;
   const belowMin=minRevNum!==null&&totalRev<minRevNum;
@@ -1082,10 +1084,10 @@ function Vizitka({rows,camp,totalRev,cityName,sv,svRow,svRowDel,posterImg,onSave
   const margin75=Math.round(margin*0.75),margin25=margin-margin75;
   const revF=rows.reduce((s,r)=>s+(r.signedBy==="F"?(parseFloat(r.price)||0):0),0);
   const revM=rows.reduce((s,r)=>s+(r.signedBy==="M"?(parseFloat(r.price)||0):0),0);
-  const kBonusF=rows.reduce((s,r)=>s+(r.type==="K"&&r.signedBy==="F"?(parseFloat(r.kBonus)||0):0),0);
-  const kBonusM=rows.reduce((s,r)=>s+(r.type==="K"&&r.signedBy==="M"?(parseFloat(r.kBonus)||0):0),0);
+  const kBonusF=rows.reduce((s,r)=>s+(r.signedBy==="F"?kBonusOf(r):0),0);
+  const kBonusM=rows.reduce((s,r)=>s+(r.signedBy==="M"?kBonusOf(r):0),0);
   const countF=rows.filter(r=>r.signedBy==="F").length,countM=rows.filter(r=>r.signedBy==="M").length;
-  const marginF=Math.round(revF*(camp.marginPct/100))+kBonusF,marginM=Math.round(revM*(camp.marginPct/100))+kBonusM;
+  const marginF=Math.round(marginExact(rows,(camp.marginPct||0)/100,"F")),marginM=Math.round(marginExact(rows,(camp.marginPct||0)/100,"M"));
   const totalRev2=rows.reduce((s,r)=>s+(parseFloat(r.price2)||0),0);
   const totalNav=rows.reduce((s,r)=>s+((r.existingPrice&&r.price)?(parseFloat(r.price)-parseFloat(r.existingPrice)):0),0);
   function addRow(){const mx=Math.max(...rows.map(r=>r.id||0),0);const lbl=String(mx+1);svRow({id:mx+1,rowId:"r"+Date.now(),label:lbl,type:"?",price:"",price2:"",existingPrice:"",navyseno:"",gfxStatus:"red",advertiser:"",graphic:"",signedBy:"",kBonus:"",customerName:"",customerAddress:"",customerContact:"",customerPhone:"",customerEmail:"",contractDate:"",customerNote:"",custVer:1});}
@@ -1447,10 +1449,9 @@ function Shrnuti({uid,city,camp,rows,sv}){
     const dc=Math.max(0,Math.round((new Date(tISO)-new Date(camp.startDate))/86400000));
     const wd=countWorkDays(camp.startDate,tISO);
     const trz=rows.reduce((s,r)=>s+(parseFloat(r.price)||0),0);
-    const kB=rows.reduce((s,r)=>s+(r.type==="K"?(parseFloat(r.kBonus)||0):0),0);
-    const mar=Math.round(trz*((camp.marginPct||0)/100))+kB;
+    const mar=Math.round(marginExact(rows,(camp.marginPct||0)/100));
     const nav=rows.reduce((s,r)=>s+((r.existingPrice&&r.price)?(parseFloat(r.price)-parseFloat(r.existingPrice)):0),0);
-    const nN=rows.filter(r=>r.type==="N").length,nSZ=rows.filter(r=>r.type==="S"||r.type==="Z").length,nJ=rows.filter(r=>r.type==="J"||r.type==="K").length;
+    const nN=rows.filter(r=>r.type==="N").length,nSZ=rows.filter(r=>r.type==="S"||r.type==="Z").length,nJ=rows.filter(r=>r.type==="J").length;
     const revF=rows.reduce((s,r)=>s+(r.signedBy==="F"?(parseFloat(r.price)||0):0),0);
     const revM=rows.reduce((s,r)=>s+(r.signedBy==="M"?(parseFloat(r.price)||0):0),0);
     const countF=rows.filter(r=>r.signedBy==="F").length,countM=rows.filter(r=>r.signedBy==="M").length;
