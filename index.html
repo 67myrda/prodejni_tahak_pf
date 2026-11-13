@@ -8,6 +8,7 @@
 <script src="./libs/react.production.min.js"></script>
 <script src="./libs/react-dom.production.min.js"></script>
 <script src="./libs/babel.min.js"></script>
+<script src="./libs/qrcode.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -674,7 +675,7 @@ function Shell({me,users,syncStatus,setSyncStatus,onLogout,upUsers}){
     const aktivnichC=Math.max(0,wd-restInRangeC);
     const cityId="c"+Date.now();
     const kCntC=rows.filter(r=>r.type==="K").length;
-    const record={id:cityId,mesto:city.name||"",edice:effEnd?new Date(effEnd).getFullYear():new Date().getFullYear(),datumOd:camp.startDate||"",datumDo:effEnd||"",dniCelkem:dc,pracovnichDni:wd,aktivnich:aktivnichC,procentoMarze:camp.marginPct||0,celkemPoli:rows.length,nove:nNc,stavajiciZ:nSZc,jine:nJc,kontrolky:kCntC,barterBonus:totalKBonusC,trzba:totalRevC,navyseni:totalNavC,marze:marginC,trzbaMonika:revFc,trzbaMyrda:revMc,pocetMonika:countFc,pocetMyrda:countMc,closedAt:Date.now(),historic:false,ownerUid:uid,rowsSnapshot:rows.map(r=>({...r}))};
+    const record={id:cityId,mesto:city.name||"",edice:effEnd?new Date(effEnd).getFullYear():new Date().getFullYear(),datumOd:camp.startDate||"",datumDo:effEnd||"",dniCelkem:dc,pracovnichDni:wd,aktivnich:aktivnichC,procentoMarze:camp.marginPct||0,celkemPoli:rows.length,nove:nNc,stavajiciZ:nSZc,jine:nJc,kontrolky:kCntC,barterBonus:totalKBonusC,trzba:totalRevC,navyseni:totalNavC,marze:marginC,trzbaMonika:revFc,trzbaMyrda:revMc,pocetMonika:countFc,pocetMyrda:countMc,closedAt:Date.now(),historic:false,ownerUid:uid,rowsSnapshot:rows.map(r=>({...r})),faktury:camp.invoices||null};
     const ok1=await restSetDoc("pf_cities_history/"+cityId,record);
     if(!ok1)return{ok:false,msg:"Uložení do archivu selhalo. Zkus to znovu."};
     const newCity={name:"Vaše město",emoji:"🏙️"};
@@ -816,6 +817,123 @@ function dimOf(label){const k=String(label||"");if(!k)return "";
 // E-maily — "zákazník jako hub" (fáze E1). Šablony: rozmery-a-sablony-v2.md
 const GFX_EMAIL="dzob@seznam.cz";
 const MANAGER_WA_PHONE="420603758487"; // Niki — čtvrteční resumé
+// ── FAKTURY (fáze F2, 11/2026) ────────────────────────────────
+// Údaje dodavatelů + číselné řady leží v Firestore pf_config/invoice (za přihlášením),
+// NE v kódu — repo je veřejné. Odběratel (Pro-Factor) je veřejný údaj z ARES.
+const INV_DOC="pf_config/invoice";
+const INV_CUSTOMER_DEF={name:"PRO-FACTOR cz, s.r.o.",street:"Revoluční 62",city:"544 01 Dvůr Králové nad Labem",ico:"26013509",dic:"CZ26013509"};
+const INV_PREFIX={F:"PFO",M:"PFY"};
+const BANK_NAMES={"2010":"Fio banka","0800":"Česká spořitelna","0100":"Komerční banka","0300":"ČSOB","0600":"MONETA Money Bank","2700":"UniCredit Bank","3030":"Air Bank","5500":"Raiffeisenbank","6210":"mBank"};
+const BANK_SWIFT={"2010":"FIOBCZPP","0800":"GIBACZPX","0100":"KOMBCZPP","0300":"CEKOCZPP","0600":"AGBACZPP","2700":"BACXCZPP","3030":"AIRACZPP","5500":"RZBCCZPP","6210":"BREXCZPP"};
+// "19-2202540688/2010" → {prefix,number,bank} | null
+function parseCzAccount(s){const m=String(s||"").replace(/\s/g,"").match(/^(?:(\d{1,6})-)?(\d{2,10})\/(\d{4})$/);return m?{prefix:m[1]||"",number:m[2],bank:m[3]}:null;}
+function czIban(acc){
+  const a=parseCzAccount(acc);if(!a)return "";
+  const bban=a.bank+a.prefix.padStart(6,"0")+a.number.padStart(10,"0");
+  const num=bban+"123500"; // "CZ00" → C=12 Z=35 00
+  let r=0;for(const ch of num)r=(r*10+(+ch))%97;
+  return "CZ"+String(98-r).padStart(2,"0")+bban;
+}
+const round2=x=>Math.round(Number((x*100).toFixed(6)))/100;
+function localIsoD(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function addDaysIso(iso,n){const [y,m,d]=iso.split("-").map(Number);return localIsoD(new Date(y,m-1,d+n));}
+function addMonthsIso(iso,n){const [y,m,d]=iso.split("-").map(Number);const last=new Date(y,m-1+n+1,0).getDate();return localIsoD(new Date(y,m-1+n,Math.min(d,last)));}
+// Částky v haléřích z NEzaokrouhlené marže (stejně jako počítá firma): 18 892,13 = 75 % z 25 189,50
+function invoiceAmounts(rows,camp){
+  const pct=(parseFloat(camp.marginPct)||0)/100;
+  const sum=(fn)=>rows.reduce((s,r)=>s+fn(r),0);
+  const price=r=>parseFloat(r.price)||0,kb=r=>r.type==="K"?(parseFloat(r.kBonus)||0):0;
+  const exF=sum(r=>r.signedBy==="F"?price(r)*pct+kb(r):0);
+  const exM=sum(r=>r.signedBy==="M"?price(r)*pct+kb(r):0);
+  const exAll=sum(r=>price(r)*pct+kb(r));
+  return{F:round2(exF*0.75),M:round2(exM*0.75),P2:round2(exAll*0.25)};
+}
+// Proč (zatím) nelze vystavit — prázdné pole = lze
+function invoiceBlockers(rows){
+  const out=[];
+  const nV=rows.filter(r=>r.type==="V").length;
+  if(nV)out.push(nV+"× pole ve stavu Volné (V) — faktury jdou vystavit až po prodeji všech polí.");
+  const noSign=rows.filter(r=>(parseFloat(r.price)||parseFloat(r.kBonus))&&r.signedBy!=="F"&&r.signedBy!=="M").map(r=>r.label||r.id);
+  if(noSign.length)out.push("Bez ♀️/♂️ (kdo podepsal): pole "+noSign.join(", ")+" — bez toho nejde rozdělit marže.");
+  return out;
+}
+function invNumber(who,n,yy){return INV_PREFIX[who]+String(n).padStart(2,"0")+"/"+String(yy).padStart(2,"0");}
+function invVs(n,yy){return String(yy).padStart(2,"0")+String(n).padStart(2,"0");}
+function supplierComplete(s){return !!(s&&s.name&&s.street&&s.city&&s.ico&&parseCzAccount(s.account));}
+
+// QR Platba (SPD 1.0, standard ČBA). Hodnoty bez "*" a jen ASCII.
+function spdClean(s){return String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^\x20-\x7E]/g," ").replace(/[*]/g," ").replace(/\s+/g," ").trim().toUpperCase().slice(0,60);}
+function buildSpd({iban,amount,vs,due,msg}){
+  let s="SPD*1.0*ACC:"+iban+"*AM:"+Number(amount).toFixed(2)+"*CC:CZK";
+  if(due)s+="*DT:"+due.replace(/-/g,"");
+  if(vs)s+="*X-VS:"+vs;
+  if(msg)s+="*MSG:"+spdClean(msg);
+  return s+"*";
+}
+function qrSvg(text){
+  if(typeof qrcode!=="function")return "";
+  const qr=qrcode(0,"M");qr.addData(text);qr.make();
+  const n=qr.getModuleCount();let p="";
+  for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(qr.isDark(r,c))p+="M"+c+","+r+"h1v1h-1z";
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -4 '+(n+8)+' '+(n+8)+'" shape-rendering="crispEdges"><rect x="-4" y="-4" width="'+(n+8)+'" height="'+(n+8)+'" fill="#fff"/><path d="'+p+'" fill="#000"/></svg>';
+}
+function invEsc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function fmtKc2(n){return Number(n).toLocaleString("cs-CZ",{minimumFractionDigits:2,maximumFractionDigits:2}).replace(/ /g," ");}
+function fmtDCz(iso){const [y,m,d]=iso.split("-");return parseInt(d)+". "+parseInt(m)+". "+y;}
+
+// inv={number|null,vs|null,issued,due,amount,text,qrMsg,supplier,customer}
+function invoicePageHtml(inv){
+  const s=inv.supplier,c=inv.customer,iban=czIban(s.account),bc=(parseCzAccount(s.account)||{}).bank;
+  const spd=buildSpd({iban,amount:inv.amount,vs:inv.vs,due:inv.due,msg:inv.qrMsg});
+  const swift=s.swift||BANK_SWIFT[bc]||"";
+  return '<section class="inv">'
+  +'<header class="top"><div><div class="kind">Faktura</div><div class="sub">Nejsem plátce DPH</div></div>'
+  +'<div class="numbox"><div class="lbl">Číslo dokladu</div>'+(inv.number?'<span class="num">'+invEsc(inv.number)+'</span>':'<span class="num blank"></span>')+'</div></header>'
+  +'<div class="parties"><div class="party"><div class="lbl">Dodavatel</div><div class="pname">'+invEsc(s.name)+'</div><div>'+invEsc(s.street)+'</div><div>'+invEsc(s.city)+'</div><div class="ids"><span>IČO&nbsp;'+invEsc(s.ico)+'</span></div></div>'
+  +'<div class="party"><div class="lbl">Odběratel</div><div class="pname">'+invEsc(c.name)+'</div><div>'+invEsc(c.street)+'</div><div>'+invEsc(c.city)+'</div><div class="ids"><span>IČO&nbsp;'+invEsc(c.ico)+'</span><span>DIČ&nbsp;'+invEsc(c.dic)+'</span></div></div></div>'
+  +'<div class="meta"><div><div class="lbl">Datum vystavení</div><div class="mv">'+fmtDCz(inv.issued)+'</div></div><div><div class="lbl">Datum splatnosti</div><div class="mv">'+fmtDCz(inv.due)+'</div></div><div><div class="lbl">Forma úhrady</div><div class="mv">Převodem</div></div><div><div class="lbl">Variabilní symbol</div><div class="mv">'+(inv.vs?invEsc(inv.vs):'<span class="blankline"></span>')+'</div></div></div>'
+  +'<table class="items"><thead><tr><th>Předmět fakturace</th><th class="r">Částka</th></tr></thead><tbody><tr><td>'+invEsc(inv.text)+'</td><td class="r">'+fmtKc2(inv.amount)+' Kč</td></tr></tbody></table>'
+  +'<div class="pay"><div class="qr">'+qrSvg(spd)+'<div class="qrl">QR Platba</div></div>'
+  +'<div class="bank"><div class="lbl">Platební údaje</div><div class="brow"><span>Banka</span><b>'+invEsc(s.bank||BANK_NAMES[bc]||"")+'</b></div><div class="brow"><span>Číslo účtu</span><b>'+invEsc(s.account)+'</b></div><div class="brow"><span>IBAN</span><b>'+iban.replace(/(.{4})/g,"$1 ").trim()+'</b></div>'+(swift?'<div class="brow"><span>SWIFT</span><b>'+invEsc(swift)+'</b></div>':'')+'</div>'
+  +'<div class="total"><div class="lbl">Celkem k úhradě</div><div class="tv">'+fmtKc2(inv.amount)+'&nbsp;Kč</div></div></div>'
+  +'<footer class="foot"><div class="issuer"><div class="brow"><span>Vystavil</span><b>'+invEsc(s.name)+'</b></div>'+(s.phone?'<div class="brow"><span>Telefon</span><b>'+invEsc(s.phone)+'</b></div>':'')+(s.email?'<div class="brow"><span>E-mail</span><b>'+invEsc(s.email)+'</b></div>':'')+'<div class="legal">Fyzická osoba zapsaná v živnostenském rejstříku.</div></div>'
+  +'<div class="sign"><div class="sline"></div><div class="lbl">Razítko, podpis</div></div></footer></section>';
+}
+const INVOICE_CSS="@page{size:A4;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,'Segoe UI',Roboto,Arial,sans-serif;color:#1d2228;background:#e9e7e2;-webkit-print-color-adjust:exact;print-color-adjust:exact}"
++".bar{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;justify-content:center;padding:10px;background:#1d2228;color:#fff;font-size:13px}.bar button{background:#E8772E;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-weight:700;font-size:14px;cursor:pointer}"
++".inv{width:210mm;height:297mm;margin:10px auto;background:#fff;padding:18mm 17mm 16mm;display:flex;flex-direction:column;page-break-after:always;box-shadow:0 2px 12px rgba(0,0,0,.12)}.inv:last-child{page-break-after:auto}"
++"@media print{body{background:#fff}.bar{display:none}.inv{margin:0;box-shadow:none}}"
++".lbl{font-size:7.6pt;letter-spacing:.09em;text-transform:uppercase;color:#7a828c;font-weight:600;margin-bottom:1.6mm}"
++".top{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:5mm;border-bottom:2.2pt solid #1d2228}.kind{font-size:30pt;font-weight:800;letter-spacing:-.02em;line-height:1}.sub{font-size:8.5pt;color:#7a828c;margin-top:2mm}.numbox{text-align:right}"
++".num{font-size:17pt;font-weight:700;font-variant-numeric:tabular-nums}.num.blank{display:inline-block;width:46mm;height:9mm;border-bottom:1pt dashed #9aa1a9}"
++".parties{display:grid;grid-template-columns:1fr 1fr;gap:10mm;padding:8mm 0 7mm;font-size:10pt;line-height:1.55}.pname{font-size:12.5pt;font-weight:700;margin-bottom:1mm}.ids{margin-top:2mm;color:#4a525b;font-size:9.2pt;display:flex;gap:5mm}"
++".meta{display:grid;grid-template-columns:repeat(4,1fr);gap:4mm;padding:4.5mm 5mm;background:#f2f1ed;border-radius:2.5mm}.mv{font-size:11pt;font-weight:600;font-variant-numeric:tabular-nums}.blankline{display:inline-block;width:26mm;border-bottom:1pt dashed #9aa1a9;height:4.5mm}"
++".items{width:100%;border-collapse:collapse;margin-top:9mm;font-size:10.5pt}.items th{text-align:left;font-size:7.6pt;letter-spacing:.09em;text-transform:uppercase;color:#7a828c;font-weight:600;padding:0 0 2.5mm;border-bottom:.8pt solid #c9cdd2}.items td{padding:5mm 0;border-bottom:.8pt solid #c9cdd2}.items .r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}"
++".pay{margin-top:auto;display:grid;grid-template-columns:32mm minmax(0,1fr) 56mm;gap:5mm;align-items:end;padding-bottom:8mm;border-bottom:.8pt solid #c9cdd2}.qr svg{width:32mm;height:32mm;display:block}.qrl{font-size:7.6pt;text-align:center;color:#7a828c;margin-top:1mm;letter-spacing:.06em;text-transform:uppercase;font-weight:600}"
++".bank{font-size:8.8pt}.brow{display:flex;gap:3mm;padding:.8mm 0}.brow span{width:17mm;color:#7a828c;flex-shrink:0}.brow b{font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}"
++".total{border:1.6pt solid #1d2228;border-radius:2.5mm;padding:4.5mm 5.5mm}.tv{font-size:17pt;font-weight:800;text-align:right;font-variant-numeric:tabular-nums;letter-spacing:-.01em;white-space:nowrap}"
++".foot{display:flex;justify-content:space-between;align-items:flex-end;padding-top:6mm;font-size:9.2pt}.legal{color:#7a828c;font-size:8.2pt;margin-top:2.5mm}.sign{width:50mm;text-align:center}.sline{border-bottom:.8pt solid #1d2228;height:20mm;margin-bottom:1.5mm}";
+function openInvoicesWindow(invs,title){
+  const html='<!DOCTYPE html><html lang="cs"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+invEsc(title)+'</title>'
+  +'<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"><style>'+INVOICE_CSS+'</style></head><body>'
+  +'<div class="bar"><span>'+invEsc(title)+'</span><button onclick="window.print()">🖨️ Tisk / Uložit jako PDF</button></div>'
+  +invs.map(invoicePageHtml).join("")+'</body></html>';
+  const url=URL.createObjectURL(new Blob([html],{type:"text/html;charset=utf-8"}));
+  window.open(url,"_blank");
+}
+// Odkaz "přidat do Google Kalendáře" — celodenní událost, bez OAuth
+function gcalLink(title,iso,details){const d=iso.replace(/-/g,""),d2=addDaysIso(iso,1).replace(/-/g,"");return "https://calendar.google.com/calendar/render?action=TEMPLATE&text="+encodeURIComponent(title)+"&dates="+d+"/"+d2+"&details="+encodeURIComponent(details||"");}
+// Sestaví 3 faktury z uloženého záznamu camp.invoices + nastavení
+function buildInvoiceList(rec,cfg){
+  const cust=cfg.customer||INV_CUSTOMER_DEF;
+  const base="Fakturuji Vám provizi za město "+rec.city;
+  return[
+    {number:rec.F.number,vs:rec.F.vs,issued:rec.issued,due:rec.due,amount:rec.F.amount,text:base,qrMsg:"Provize "+rec.city,supplier:cfg.suppliers.F,customer:cust},
+    {number:rec.M.number,vs:rec.M.vs,issued:rec.issued,due:rec.due,amount:rec.M.amount,text:base,qrMsg:"Provize "+rec.city,supplier:cfg.suppliers.M,customer:cust},
+    {number:null,vs:null,issued:rec.P2.issued,due:rec.P2.due,amount:rec.P2.amount,text:base+" – 2. část",qrMsg:"Provize "+rec.city+" 2. cast",supplier:cfg.suppliers.M,customer:cust}
+  ];
+}
+
 const GFX_DRIVE_FOLDER_ID="1l-T7a6Cp9ePRUlkO131mY_Eqdy7ehyh-"; // cílová složka pro soubory k šablonám grafikovi (přejmenované dle šablony/subjektu/města)
 // Sanitizace části názvu souboru pro Disk – odstraní znaky problematické v souborových jménech
 function sanitizeNamePart(s){return String(s||"").replace(/[\\/:*?"<>|]+/g," ").replace(/\s+/g," ").trim();}
@@ -1108,7 +1226,8 @@ ${camp.summary?`<div class="sbox">${camp.summary.replace(/&/g,"&amp;").replace(/
         const waMsg="Čtvrteční resumé — "+(cityName||"Kampaň")+", "+dCz+"\n♀️ Monika: "+countF+" inzerátů, "+revF.toLocaleString("cs")+" Kč\n♂️ Myrda: "+countM+" inzerátů, "+revM.toLocaleString("cs")+" Kč";
         window.open("https://wa.me/"+MANAGER_WA_PHONE+"?text="+encodeURIComponent(waMsg),"_blank");
       }} style={{width:"100%",padding:11,background:"#25D366",color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:13.5,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>💬 Poslat čtvrteční resumé</button>
-    </div></div>
+    </div>
+    <InvoiceSection rows={rows} camp={camp} cityName={cityName} sv={sv}/></div>
     <div id="vizitka_table" style={{background:"white",borderRadius:14,overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,0.06)",marginBottom:10}}>
       <div style={{display:"grid",gridTemplateColumns:"20px 26px 48px 50px 18px 18px 1fr 22px",gap:2,padding:"8px 9px",background:DK,color:"white",fontSize:9.5,fontWeight:700,alignItems:"center"}}>
         <div style={{fontSize:9}}>Pole</div><div style={{textAlign:"center"}}>Stav</div><div style={{color:"#a5b4fc"}}>C.pole</div><div>Cena Kč</div><div style={{textAlign:"center",fontSize:11}}>🎨</div><div style={{textAlign:"center",fontSize:11}}>♀♂</div>
@@ -1625,6 +1744,117 @@ function ZalohaCard({me}){
   return(<div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 8px",fontSize:13,color:DK}}>💾 Záloha dat</h3><div style={{fontSize:12,color:"#999",lineHeight:1.6,marginBottom:12}}>Stáhne kompletní zálohu všech dat (aktuální město, Vizitka, skripty, celý archiv měst) jako jeden soubor JSON. Pojistka proti omylu, chybě i ztrátě zařízení — doporučuji stáhnout před každým uzavřením města.</div>{msg&&<div style={{padding:9,borderRadius:8,background:msg.indexOf("✅")===0?"#f0fdf4":"#fef2f2",color:msg.indexOf("✅")===0?GR:"#dc2626",fontSize:12.5,marginBottom:12}}>{msg}</div>}<button onClick={exportJson} disabled={busy} style={{width:"100%",padding:12,background:GR,color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:14,cursor:busy?"default":"pointer",opacity:busy?0.6:1}}>{busy?"⏳ Připravuji...":"⬇️ Stáhnout zálohu (JSON)"}</button></div>);
 }
 
+// ── FAKTURY: sekce na Vizitce ─────────────────────────────────
+function InvoiceSection({rows,camp,cityName,sv}){
+  const [cfg,setCfg]=useState(null);const [busy,setBusy]=useState(false);const [msg,setMsg]=useState("");
+  useEffect(()=>{restGet(INV_DOC).then(c=>setCfg(c||{}));},[]);
+  const city=subjClean(cityName,true)||"—";
+  const rec=camp.invoices||null;
+  const blockers=invoiceBlockers(rows);
+  const am=invoiceAmounts(rows,camp);
+  const cfgOk=cfg&&cfg.suppliers&&supplierComplete(cfg.suppliers.F)&&supplierComplete(cfg.suppliers.M)&&cfg.seq&&cfg.seq.F&&cfg.seq.M;
+  const box={background:"white",borderRadius:10,padding:12,marginBottom:9,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"};
+  const line=(l,v,c)=>(<div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,padding:"3px 0"}}><span style={{color:c||"#666"}}>{l}</span><b style={{color:c||DK,whiteSpace:"nowrap"}}>{v}</b></div>);
+  async function issue(){
+    setMsg("");setBusy(true);
+    try{
+      const c=await restGet(INV_DOC);
+      if(!c||!c.suppliers||!supplierComplete(c.suppliers.F)||!supplierComplete(c.suppliers.M)||!c.seq||!c.seq.F||!c.seq.M){setMsg("❌ Nejdřív vyplň Fakturační údaje (Admin / Nastavení).");setBusy(false);return;}
+      const issued=localIsoD(new Date()),due=addDaysIso(issued,7);
+      const p2Issued=addMonthsIso(issued,4),p2Due=addDaysIso(p2Issued,7);
+      const yy=parseInt(issued.slice(2,4),10);
+      const nextOf=w=>(parseInt(c.seq[w].yy,10)===yy?parseInt(c.seq[w].next,10)||1:1);
+      const nF=nextOf("F"),nM=nextOf("M");
+      const r={issued,due,city,
+        F:{number:invNumber("F",nF,yy),vs:invVs(nF,yy),amount:am.F},
+        M:{number:invNumber("M",nM,yy),vs:invVs(nM,yy),amount:am.M},
+        P2:{issued:p2Issued,due:p2Due,amount:am.P2}};
+      if(!window.confirm("Vystavit faktury za město "+city+"?\n\n♀️ "+r.F.number+" — "+fmtKc2(r.F.amount)+" Kč\n♂️ "+r.M.number+" — "+fmtKc2(r.M.amount)+" Kč\n♂️ 2. část (bez čísla) — "+fmtKc2(r.P2.amount)+" Kč, vystavení "+fmtDCz(p2Issued)+"\n\nČísla faktur se tím definitivně přidělí.")){setBusy(false);return;}
+      const nc={...c,seq:{F:{yy,next:nF+1},M:{yy,next:nM+1}}};
+      const ok=await restSetDoc(INV_DOC,nc);
+      if(!ok){setMsg("❌ Uložení číselné řady selhalo — nic se nevystavilo. Zkus to znovu.");setBusy(false);return;}
+      setCfg(nc);
+      await sv("camp",{...camp,invoices:r});
+      setMsg("✅ Vystaveno. Klepni na „Otevřít faktury“ a ulož je jako PDF.");
+    }catch(e){setMsg("❌ Vystavení selhalo: "+(e.message||"chyba spojení"));}
+    setBusy(false);
+  }
+  function openAll(){
+    if(!cfgOk){setMsg("❌ Fakturační údaje nejsou načtené nebo kompletní (Admin / Nastavení).");return;}
+    openInvoicesWindow(buildInvoiceList(rec,cfg),"Faktury — "+rec.city);
+  }
+  function refreshAmounts(){
+    if(!window.confirm("Přepsat částky na fakturách aktuálními hodnotami z appky?\nČísla faktur a data zůstanou stejná."))return;
+    sv("camp",{...camp,invoices:{...rec,F:{...rec.F,amount:am.F},M:{...rec.M,amount:am.M},P2:{...rec.P2,amount:am.P2}}});
+  }
+  const drift=rec&&(rec.F.amount!==am.F||rec.M.amount!==am.M||rec.P2.amount!==am.P2);
+  return(<div style={box}>
+    <div style={{fontSize:11,fontWeight:700,color:DK,marginBottom:8}}>🧾 Faktury za město</div>
+    {msg&&<div style={{padding:8,borderRadius:8,background:msg.indexOf("✅")===0?"#f0fdf4":"#fef2f2",color:msg.indexOf("✅")===0?GR:"#dc2626",fontSize:12,marginBottom:9}}>{msg}</div>}
+    {!rec?(<>
+      {line("♀️ Monika (75 %)",fmtKc2(am.F)+" Kč","#be185d")}
+      {line("♂️ Myrda (75 %)",fmtKc2(am.M)+" Kč","#1d4ed8")}
+      {line("♂️ 2. část (25 %) · za 4 měsíce",fmtKc2(am.P2)+" Kč","#1d4ed8")}
+      {blockers.length>0&&<div style={{marginTop:8,background:"#fff7ed",border:"1.5px solid #fdba74",borderRadius:8,padding:"7px 9px",fontSize:11.5,color:"#9a3412",lineHeight:1.5}}>{blockers.map((b,i)=>(<div key={i}>⚠️ {b}</div>))}</div>}
+      {cfg&&!cfgOk&&<div style={{marginTop:8,fontSize:11.5,color:"#9a3412"}}>⚠️ Chybí Fakturační údaje — vyplň je v Adminu (karta 🧾).</div>}
+      <button onClick={issue} disabled={busy||blockers.length>0||!cfgOk} style={{width:"100%",marginTop:10,padding:11,background:(busy||blockers.length>0||!cfgOk)?"#d1d5db":DK,color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:13.5,cursor:(busy||blockers.length>0||!cfgOk)?"default":"pointer"}}>{busy?"⏳ Vystavuji…":"🧾 Vystavit faktury"}</button>
+    </>):(<>
+      {line("Vystaveno",fmtDCz(rec.issued)+" · splatnost "+fmtDCz(rec.due))}
+      {line("♀️ "+rec.F.number,fmtKc2(rec.F.amount)+" Kč","#be185d")}
+      {line("♂️ "+rec.M.number,fmtKc2(rec.M.amount)+" Kč","#1d4ed8")}
+      {line("♂️ 2. část · vystavení "+fmtDCz(rec.P2.issued),fmtKc2(rec.P2.amount)+" Kč","#1d4ed8")}
+      {drift&&<div style={{marginTop:8,background:"#fff7ed",border:"1.5px solid #fdba74",borderRadius:8,padding:"7px 9px",fontSize:11.5,color:"#9a3412",lineHeight:1.5}}>⚠️ Částky v appce se od vystavení změnily (teď ♀️ {fmtKc2(am.F)} · ♂️ {fmtKc2(am.M)} · 2. část {fmtKc2(am.P2)}). Faktury se zatím tisknou s původními částkami.<button onClick={refreshAmounts} style={{display:"block",marginTop:6,background:"transparent",border:"1px solid #9a3412",color:"#9a3412",padding:"4px 10px",borderRadius:7,fontSize:11.5,cursor:"pointer"}}>↻ Aktualizovat částky (čísla zůstanou)</button></div>}
+      <button onClick={openAll} style={{width:"100%",marginTop:10,padding:11,background:DK,color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:13.5,cursor:"pointer"}}>🧾 Otevřít faktury (tisk / PDF)</button>
+      <a href={gcalLink("🧾 Fakturovat 2. část provize — "+rec.city,rec.P2.issued,"Myrda: 2. část provize za město "+rec.city+" — "+fmtKc2(rec.P2.amount)+" Kč (25 %). Faktura už leží na firmě s datem "+fmtDCz(rec.P2.issued)+" — domluvit s Pájou číslo faktury (další volné číslo PFY: appka → Admin → Fakturační údaje).")} target="_blank" rel="noopener" style={{display:"block",textAlign:"center",marginTop:7,padding:9,border:"1.5px solid #e5e7eb",borderRadius:11,fontWeight:600,fontSize:12.5,color:DK,textDecoration:"none"}}>📅 Připomínka 2. části do kalendáře ({fmtDCz(rec.P2.issued)})</a>
+    </>)}
+  </div>);
+}
+
+// ── FAKTURY: nastavení (Admin + Nastavení) ────────────────────
+function InvoiceSettingsCard(){
+  const [open,setOpen]=useState(false);const [cfg,setCfg]=useState(null);const [msg,setMsg]=useState("");const [busy,setBusy]=useState(false);
+  const yyNow=new Date().getFullYear()%100;
+  useEffect(()=>{if(!open||cfg)return;restGet(INV_DOC).then(c=>{c=c||{};setCfg({suppliers:{F:{},M:{},...(c.suppliers||{})},customer:{...INV_CUSTOMER_DEF,...(c.customer||{})},seq:{F:{yy:yyNow,next:""},M:{yy:yyNow,next:""},...(c.seq||{})}});});},[open]);
+  const upd=(path,v)=>setCfg(p=>{const n=JSON.parse(JSON.stringify(p));let o=n;for(let i=0;i<path.length-1;i++)o=o[path[i]];o[path[path.length-1]]=v;return n;});
+  async function save(){
+    setMsg("");
+    for(const w of ["F","M"]){if(!supplierComplete(cfg.suppliers[w])){setMsg("❌ "+(w==="F"?"Monika":"Myrda")+": vyplň jméno, ulici, město, IČO a platné číslo účtu (např. 2202540688/2010).");return;}
+      const n=parseInt(cfg.seq[w].next,10);if(!(n>=1)){setMsg("❌ "+(w==="F"?"Monika":"Myrda")+": vyplň další číslo faktury.");return;}}
+    setBusy(true);
+    const clean={...cfg,seq:{F:{yy:parseInt(cfg.seq.F.yy,10)||yyNow,next:parseInt(cfg.seq.F.next,10)},M:{yy:parseInt(cfg.seq.M.yy,10)||yyNow,next:parseInt(cfg.seq.M.next,10)}}};
+    const ok=await restSetDoc(INV_DOC,clean);setBusy(false);
+    if(ok){setCfg(clean);setMsg("✅ Uloženo.");}else setMsg("❌ Uložení selhalo. Zkontroluj připojení.");
+  }
+  const fld=(label,path,ph,type)=>(<div style={{marginBottom:7}}><label style={{...lbl,fontSize:11}}>{label}</label><input type={type||"text"} style={{...inp,padding:"8px 10px",fontSize:13}} value={path.reduce((o,k)=>o&&o[k],cfg)||""} onChange={e=>upd(path,e.target.value)} placeholder={ph||""}/></div>);
+  const supplier=(w,title,color)=>{const acc=(cfg.suppliers[w]||{}).account;const iban=czIban(acc);return(
+    <div style={{border:"1.5px solid #f0f0f0",borderRadius:10,padding:10,marginBottom:10}}>
+      <div style={{fontWeight:800,fontSize:12.5,color,marginBottom:7}}>{title}</div>
+      {fld("Jméno",["suppliers",w,"name"])}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{fld("Ulice",["suppliers",w,"street"])}{fld("PSČ a město",["suppliers",w,"city"])}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{fld("IČO",["suppliers",w,"ico"])}{fld("Číslo účtu",["suppliers",w,"account"],"1234567890/2010")}</div>
+      <div style={{fontSize:10.5,marginTop:-3,marginBottom:7,color:acc?(iban?"#16a34a":"#dc2626"):"#bbb"}}>{acc?(iban?"IBAN: "+iban.replace(/(.{4})/g,"$1 ").trim()+" — porovnej s bankou":"Neplatný formát čísla účtu"):"IBAN se dopočítá z čísla účtu"}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{fld("Telefon",["suppliers",w,"phone"])}{fld("E-mail",["suppliers",w,"email"])}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{fld("Další číslo faktury",["seq",w,"next"],"11","number")}{fld("Rok (2 číslice)",["seq",w,"yy"],String(yyNow),"number")}</div>
+      <div style={{fontSize:10.5,color:"#999"}}>Příští faktura: <b>{invNumber(w,parseInt(cfg.seq[w].next,10)||0,parseInt(cfg.seq[w].yy,10)||yyNow)}</b> · v novém roce appka začne znovu od 01</div>
+    </div>);};
+  return(<div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+    <div onClick={()=>setOpen(o=>!o)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}><h3 style={{margin:0,fontSize:13,color:DK}}>🧾 Fakturační údaje</h3><span style={{color:"#bbb",fontSize:12}}>{open?"▲ skrýt":"▼ zobrazit"}</span></div>
+    {open&&(!cfg?<div style={{color:"#ccc",padding:12,textAlign:"center",fontSize:12}}>⏳ Načítám…</div>:(<div style={{marginTop:12}}>
+      <div style={{fontSize:11.5,color:"#999",lineHeight:1.6,marginBottom:10}}>Údaje se ukládají do databáze appky (jen pro přihlášené), ne do veřejného kódu. Vyplňuje se jednou.</div>
+      {msg&&<div style={{padding:8,borderRadius:8,background:msg.indexOf("✅")===0?"#f0fdf4":"#fef2f2",color:msg.indexOf("✅")===0?GR:"#dc2626",fontSize:12,marginBottom:10}}>{msg}</div>}
+      {supplier("F","♀️ Monika (řada PFO)","#be185d")}
+      {supplier("M","♂️ Myrda (řada PFY)","#1d4ed8")}
+      <div style={{border:"1.5px solid #f0f0f0",borderRadius:10,padding:10,marginBottom:10}}>
+        <div style={{fontWeight:800,fontSize:12.5,color:DK,marginBottom:7}}>🏢 Odběratel</div>
+        {fld("Název",["customer","name"])}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{fld("Ulice",["customer","street"])}{fld("PSČ a město",["customer","city"])}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{fld("IČO",["customer","ico"])}{fld("DIČ",["customer","dic"])}</div>
+      </div>
+      <button onClick={save} disabled={busy} style={{width:"100%",padding:11,background:OR,color:"white",border:"none",borderRadius:11,fontWeight:700,fontSize:14,cursor:busy?"default":"pointer",opacity:busy?0.6:1}}>{busy?"⏳ Ukládám…":"💾 Uložit fakturační údaje"}</button>
+    </div>))}
+  </div>);
+}
+
 function DriveCard(){
   const [token,setToken]=useState(loadDriveToken);
   const [msg,setMsg]=useState("");
@@ -1644,12 +1874,12 @@ function DriveCard(){
 }
 
 function Nastaveni({me,city,camp,rows,sv,closeCity}){
-  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Nastavení</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",gap:11}}><div style={{width:44,height:44,background:OR,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:19}}>{me.name[0]}</div><div><div style={{fontWeight:800,fontSize:15,color:DK}}>{me.name}</div><div style={{color:"#ccc",fontSize:11}}>{AUTH.email||"Obchodní zástupce · Pro-Factor"}</div></div></div></div><PwdCard/><ZalohaCard me={me}/><DriveCard/><CloseCitySection city={city} camp={camp} rows={rows} sv={sv} closeCity={closeCity}/></div>);
+  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Nastavení</h2><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><div style={{display:"flex",alignItems:"center",gap:11}}><div style={{width:44,height:44,background:OR,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:19}}>{me.name[0]}</div><div><div style={{fontWeight:800,fontSize:15,color:DK}}>{me.name}</div><div style={{color:"#ccc",fontSize:11}}>{AUTH.email||"Obchodní zástupce · Pro-Factor"}</div></div></div></div><PwdCard/><ZalohaCard me={me}/><DriveCard/><InvoiceSettingsCard/><CloseCitySection city={city} camp={camp} rows={rows} sv={sv} closeCity={closeCity}/></div>);
 }
 
 // ── ADMIN ─────────────────────────────────────────────────────
 function Admin({me,users,upUsers,city,camp,rows,sv,closeCity}){
-  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Admin panel</h2><div style={{background:"white",borderRadius:16,padding:"13px 15px",marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)",textAlign:"center"}}><div style={{fontSize:11,fontWeight:600,color:"#bbb",marginBottom:6}}>Pro OZ PF</div><img src="badge-67m-claude.png" alt="© 67M & Claude 2026" style={{height:22}}/></div><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>🔐 Přístup do appky</h3><div style={{background:"#f9f9f9",borderRadius:10,padding:11,fontSize:12,color:"#666",lineHeight:1.7}}>Přihlášení běží přes <strong>Firebase Authentication</strong> (e-mail + heslo). Nové účty se zakládají ručně ve <strong>Firebase Console → Authentication → Users</strong>. Žádný přístupový kód, žádná veřejná registrace.<br/>Přihlášený účet: <strong>{AUTH.email||"—"}</strong></div></div><PwdCard/><ZalohaCard me={me}/><DriveCard/><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>👥 Profily ({users.length})</h3>{users.length===0&&<div style={{color:"#ccc",textAlign:"center",padding:"18px 0",fontSize:13}}>Žádné profily.</div>}{users.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 0",borderBottom:"1px solid #f8f8f8"}}><div style={{width:32,height:32,background:OR,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:14}}>{(u.name||"?")[0]}</div><div style={{flex:1}}><div style={{fontWeight:600,color:DK,fontSize:13}}>{u.name}</div><div style={{fontSize:10,color:"#ccc"}}>{u.createdAt?new Date(u.createdAt).toLocaleDateString("cs"):"—"}</div></div><button onClick={async()=>{if(window.confirm("Smazat profil "+u.name+"? Data zůstanou v databázi."))await upUsers(users.filter(x=>x.id!==u.id));}} style={{background:"#fef2f2",border:"none",color:"#dc2626",padding:"5px 8px",borderRadius:7,fontSize:12,cursor:"pointer"}}>🗑️</button></div>))}</div><CloseCitySection city={city} camp={camp} rows={rows} sv={sv} closeCity={closeCity}/></div>);
+  return(<div style={{padding:"16px"}}><h2 style={{margin:"0 0 16px",fontSize:17,fontWeight:900,color:DK}}>⚙️ Admin panel</h2><div style={{background:"white",borderRadius:16,padding:"13px 15px",marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)",textAlign:"center"}}><div style={{fontSize:11,fontWeight:600,color:"#bbb",marginBottom:6}}>Pro OZ PF</div><img src="badge-67m-claude.png" alt="© 67M & Claude 2026" style={{height:22}}/></div><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>🔐 Přístup do appky</h3><div style={{background:"#f9f9f9",borderRadius:10,padding:11,fontSize:12,color:"#666",lineHeight:1.7}}>Přihlášení běží přes <strong>Firebase Authentication</strong> (e-mail + heslo). Nové účty se zakládají ručně ve <strong>Firebase Console → Authentication → Users</strong>. Žádný přístupový kód, žádná veřejná registrace.<br/>Přihlášený účet: <strong>{AUTH.email||"—"}</strong></div></div><PwdCard/><ZalohaCard me={me}/><DriveCard/><InvoiceSettingsCard/><div style={{background:"white",borderRadius:16,padding:15,marginBottom:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}><h3 style={{margin:"0 0 12px",fontSize:13,color:DK}}>👥 Profily ({users.length})</h3>{users.length===0&&<div style={{color:"#ccc",textAlign:"center",padding:"18px 0",fontSize:13}}>Žádné profily.</div>}{users.map(u=>(<div key={u.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 0",borderBottom:"1px solid #f8f8f8"}}><div style={{width:32,height:32,background:OR,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"white",fontSize:14}}>{(u.name||"?")[0]}</div><div style={{flex:1}}><div style={{fontWeight:600,color:DK,fontSize:13}}>{u.name}</div><div style={{fontSize:10,color:"#ccc"}}>{u.createdAt?new Date(u.createdAt).toLocaleDateString("cs"):"—"}</div></div><button onClick={async()=>{if(window.confirm("Smazat profil "+u.name+"? Data zůstanou v databázi."))await upUsers(users.filter(x=>x.id!==u.id));}} style={{background:"#fef2f2",border:"none",color:"#dc2626",padding:"5px 8px",borderRadius:7,fontSize:12,cursor:"pointer"}}>🗑️</button></div>))}</div><CloseCitySection city={city} camp={camp} rows={rows} sv={sv} closeCity={closeCity}/></div>);
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
